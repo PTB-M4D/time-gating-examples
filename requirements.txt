@@ -1,0 +1,10 @@
+pydynamic
+xlrd
+openpyxl
+pandas
+matplotlib
+numpy
+scipy
+scikit-rf
+notebook
+ipywidgets

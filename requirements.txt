@@ -1,4 +1,4 @@
-pydynamic
+pydynamic>=2.4
 xlrd
 openpyxl
 pandas

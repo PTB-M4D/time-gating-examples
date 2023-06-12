@@ -1,4 +1,4 @@
-pydynamic>=2.4
+pydynamic @ git+https://github.com/PTB-M4D/PyDynamic@fix_DFT_covariance_identity
 xlrd
 openpyxl
 pandas

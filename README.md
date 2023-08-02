@@ -13,7 +13,7 @@ The provided script operates with large covariance matrices and is not really su
 ### Clone the Repository
 
 ```bash
-git clone ...
+git clone https://github.com/PTB-M4D/time-gating-examples.git
 ```
 
 ### Install Python

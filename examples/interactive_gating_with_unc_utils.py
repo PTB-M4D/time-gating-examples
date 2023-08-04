@@ -175,3 +175,36 @@ def agilent_gate(ts, t_start=0.0, t_end=1.0, kind="kaiser", order=6.5):
     return agilant_gate, agilant_gate_unc
 
 
+def make_twosided(x):
+    # returns the twosided spectrum with f=0 at the start (default numpy style)
+    # x = x_re + 1j * x_im 
+    x_twosided = np.r_[x, np.conjugate(x[1:][::-1])]  # odd signal length
+    #x_twosided = np.r_[x, np.conjugate(x[::-1])]  # even signal length (default assumption for rfft)
+    return x_twosided
+
+def make_onesided(x):
+    # returns the twosided spectrum with f=0 at the start (default numpy style)
+    # x = x_re + 1j * x_im, (size = 2*N - 1)
+    N = (x.size + 1) // 2   # odd signal length
+    #N = x.size // 2   # even signal length
+    x_onesided = x[:N]
+    return x_onesided
+
+def complex_convolution_of_two_half_spectra(X, Y):
+    # complex valued X, Y
+
+    # transform into full spectra
+    XX = make_twosided(X)
+    YY = make_twosided(Y)
+
+    # otherwise not strict ascending order (numpy default has f=0 at index 0, not in the middle)
+    XX = np.fft.fftshift(XX) 
+    YY = np.fft.fftshift(YY)
+
+    # actual convolution
+    RR = convolve1d(XX, YY, mode="wrap") / XX.size
+
+    # undo shifting and make half spectrum
+    R = make_onesided(np.fft.ifftshift(RR))
+
+    return R

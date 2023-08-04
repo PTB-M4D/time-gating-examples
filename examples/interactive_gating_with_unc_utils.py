@@ -154,3 +154,24 @@ def gate(ts, t_start=0.0, t_end=1.0, kind="kaiser", order=0.0):
     gate_unc = np.zeros(gate.size) # 1e-5*np.abs(signal.filtfilt(*signal.butter(1, 0.30, "lowpass"), np.abs(np.diff(np.r_[gate, 0])), padlen=100)) 
 
     return gate, gate_unc
+
+def agilent_gate(ts, t_start=0.0, t_end=1.0, kind="kaiser", order=6.5):
+
+    # base gate
+    Gate_rect, Gate_rect_unc = gate(ts, t_start, t_end, kind="kaiser", order=0.0)
+
+    # spectrum of base gate
+    gate_rect_ri, gate_rect_ri_cov = GUM_DFT(Gate_rect, np.diag(np.square(Gate_rect_unc)))
+
+    # gate-window
+    width = len(gate_rect_ri//2)
+    window_gate = signal.get_window((kind, order), width, fftbins=False)[width//2:]
+
+    gate_times_window_ri, gate_times_window_ri_cov = apply_window(gate_rect_ri, window_gate, gate_rect_ri_cov, None)
+
+    agilant_gate, agilant_gate_cov = GUM_iDFT(gate_times_window_ri, gate_times_window_ri_cov, Nx=ts.size)
+    agilant_gate_unc = np.sqrt(np.diag(agilant_gate_cov))
+    
+    return agilant_gate, agilant_gate_unc
+
+

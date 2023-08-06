@@ -2,9 +2,13 @@
 
 This repository holds examples for gating s-parameters in the time-domain.
 
-Click the image below to open the notebook:
+Click the image below to open the notebook showing the traditional time gating process:
 
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/PTB-M4D/time-gating-examples/main?labpath=examples%2Finteractive_gating_with_unc.ipynb)
+
+Click the image below to open the notebook showing a work-in-progress (should become the agilent time gating process, but is not there yet):
+
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/PTB-M4D/time-gating-examples/main?labpath=examples%2Finteractive_gating_with_unc_agilent.ipynb) (WIP!)
 
 ## Recommendations for Local Execution
 

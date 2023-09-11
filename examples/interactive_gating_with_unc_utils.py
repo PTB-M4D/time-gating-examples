@@ -92,13 +92,127 @@ class BaseMethods:
 
             ax = self.plotting.add_description_mag_phase_plot(ax)
             plt.show()
+    
+    def perform_time_gating_method_1(self, data, config):
+        
+        # data shotcuts
+        f = data["f"]
+        s_ri = data["s_ri"]
+        s_ri_cov = data["s_ri_cov"]
+
+        # apply window in FD
+        if config["window"] is not None:
+            if config["window"]["val"] is not None:
+                window = config["window"]["val"]
+                window_cov = config["window"]["cov"]
+                s_ri, s_ri_cov = self.apply_window(s_ri, window, s_ri_cov, window_cov)
+
+        # zeropad signal is done indirectly during FFT, however pad-lengths need to be known
+        if config["zeropad"] is not None:
+            pad_len = config["zeropad"]["pad_len"]
+            Nx = config["zeropad"]["Nx"]
+        else:
+            pad_len = 0
+            Nx = len(s_ri) - 1
+        Nx_mod = Nx + pad_len
+        
+        # apply the gate in the TD
+        if config["gate"] is not None:
+            time = config["gate"]["time"]
+            time_mod = np.arange(0, Nx_mod) * (time[1] - time[0]) * Nx / float(Nx_mod) + time[0]  # from scipy resample
+            gate_func = config["gate"]["gate_func"]
+            gate_array, gate_array_cov = gate_func(time_mod)  # the gate corresponding to a higher time resolution (to match the zero padding)
+        
+            # convert (modified) reflection data to time domain
+            S, S_cov = GUM_iDFT(s_ri, s_ri_cov, Nx=Nx_mod)
+
+            # compensate the padding
+            S *= Nx_mod / Nx
+            S_cov *= Nx_mod / Nx
+
+            # actual gating
+            S_gated = S * gate_array
+            S_gated_cov = np.diag(gate_array) @ S_cov @ np.diag(gate_array).T + np.diag(S) @ gate_array_cov @ np.diag(S).T
+            s_gated_ri, s_gated_ri_cov = GUM_DFT(S_gated, S_gated_cov)
+
+        # undo zero-padding
+        if config["zeropad"] is not None:
+            s_gated_ri = trimOrPad(s_gated_ri, length=len(f), real_imag_type=True) * Nx / Nx_mod
+            s_gated_ri_cov = trimOrPad(s_gated_ri_cov, length=len(f), real_imag_type=True) * Nx / Nx_mod
+
+        # undo windowing
+        if config["window"] is not None:
+            if config["window"]["val"] is not None:
+                s_gated_ri, s_gated_ri_cov = self.apply_window(s_gated_ri, 1.0 / window, s_gated_ri_cov, None)
+
+        # apply renormalization
+        if config["renormalization"] is not None:
+            renorm = config["renormalization"]
+            s_gated_ri = renorm(s_gated_ri)
+        
+        return s_gated_ri
+    
+    def perform_time_gating_method_2(self, data, config):
+        # MC around perform_time_gating_method_2_core
+        pass
+     
+    def perform_time_gating_method_2_core(self, data, config):
+        
+        # data shotcuts
+        f = data["f"]
+        s_ri = data["s_ri"]
+
+        # apply window in FD
+        if config["window"] is not None:
+            if config["window"]["val"] is not None:
+                window = config["window"]["val"]
+                s_ri, _ = self.apply_window(s_ri, window)
+
+        # zeropad signal in FD
+        if config["zeropad"] is not None:
+            pad_len = config["zeropad"]["pad_len"]
+            Nx = config["zeropad"]["Nx"]
+            Nx_mod = Nx + pad_len
+            
+            s_ri = trimOrPad(s_ri, length=len(f) + pad_len//2, real_imag_type=True) * Nx_mod / Nx
+
+        # transfer gate into FD
+        if config["gate"] is not None:
+            time = config["gate"]["time"]
+            gate_func = config["gate"]["gate_func"]
+            gate_array, _ = gate_func(time)
+        
+            gate_spectrum = np.fft.rfft(gate_array)
+
+        # apply gate in the FD
+        s_gated = self.complex_convolution_of_two_half_spectra(ri2c(s_ri), gate_spectrum)
+
+        # undo zeropad signal
+        if config["zeropad"] is not None:
+            s_gated = trimOrPad(s_gated, length=len(f), real_imag_type=False) * Nx / Nx_mod
+
+        # undo windowing
+        if config["window"] is not None:
+            if config["window"]["val"] is not None:
+                s_gated = s_gated / window
+
+        # apply renormalization
+        if config["renormalization"] is not None:
+            renorm = config["renormalization"]
+            s_gated_ri = renorm(s_gated_ri)
+        
+        # convert back into real-imag-representation
+        s_gated_ri = c2ri(s_gated)
+
+        return s_gated_ri
+
 
     ############################################################
     ### low level calls ########################################
     ############################################################
 
     def load_data(self, name="", return_mag_phase=False, return_full_cov=True):
-        rel_path = "../data/"
+        rel_path = "data/" # "../data/"
 
         if name == "diag_only":
             # load reflection data
@@ -195,6 +309,11 @@ class BaseMethods:
         )
         s_param_mag_unc, s_param_phase_unc = self.mag_phase_unc_from_cov(s_param_UAP)
 
+        # sometimes issues if zero division
+        s_param_phase = np.nan_to_num(s_param_phase)
+        s_param_mag_unc = np.nan_to_num(s_param_mag_unc)
+        s_param_phase_unc = np.nan_to_num(s_param_phase_unc)
+
         return s_param_mag, s_param_phase, s_param_mag_unc, s_param_phase_unc
 
     def elementwise_multiply(self, A, B, cov_A, cov_B):
@@ -207,7 +326,7 @@ class BaseMethods:
 
         return R, cov_R
 
-    def apply_window(self, A, W, cov_A, cov_W=None):
+    def apply_window(self, A, W, cov_A=None, cov_W=None):
         """
         A \in R^2N uses PyDynamic real-imag representation of a complex vector \in C^N
         A = [A_re, A_im]
@@ -218,14 +337,16 @@ class BaseMethods:
         R = [A_re * W, A_im * W]
         """
         R = A * np.r_[W, W]
+        cov_R = None
 
         # this results from applying GUM
         # CA = block_diag(np.diag(W), np.diag(W))
         # cov_R = CA @ cov_A @ CA.T
 
         # this should be the same, but is computationally faster
-        WW = np.r_[W, W]
-        cov_R = WW * cov_A * WW[:, np.newaxis]
+        if isinstance(cov_A, np.ndarray):
+            WW = np.r_[W, W]
+            cov_R = WW * cov_A * WW[:, np.newaxis]
 
         if isinstance(cov_W, np.ndarray):
             # this results from applying GUM
@@ -253,8 +374,9 @@ class BaseMethods:
         gate_unc = np.zeros(
             gate.size
         )  # 1e-5*np.abs(signal.filtfilt(*signal.butter(1, 0.30, "lowpass"), np.abs(np.diff(np.r_[gate, 0])), padlen=100))
+        gate_cov = np.diag(np.square(gate_unc))
 
-        return gate, gate_unc
+        return gate, gate_cov
 
     def agilent_gate(self, ts, t_start=0.0, t_end=1.0, kind="kaiser", order=6.5):
         # base gate
@@ -317,3 +439,23 @@ class BaseMethods:
         R = self.make_onesided(np.fft.ifftshift(RR))
 
         return R
+
+    def window(self, size, kind="nowindow"):
+        if kind == "nowindow":
+            w = None
+            uw = None
+        
+        if kind == "neutral":
+            w = np.ones(size)
+            uw = np.zeros((size, size))
+        
+        if kind == "kaiser":
+            w = signal.windows.get_window(("kaiser", 0.5 * np.pi), Nx=size, fftbins=False)
+            uw = np.zeros((size, size))
+        
+        if not kind == "nowindow":
+            w *= w.size / np.sum(w)
+            uw *= w.size / np.sum(w)
+        
+        return w, uw
+        

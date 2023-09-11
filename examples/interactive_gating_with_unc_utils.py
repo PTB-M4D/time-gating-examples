@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 from matplotlib import colors
 
+import os
 import copy
 import numpy as np
 import pandas
@@ -19,45 +20,9 @@ from PyDynamic.misc import real_imag_2_complex as ri2c
 from PyDynamic.misc.tools import shift_uncertainty, trimOrPad
 
 
-class PlotMethods:
-    def __init__(self):
-        pass
-
-    def init_mag_phase_plot(self):
-        fig, ax = plt.subplots(nrows=4, figsize=(8, 8), tight_layout=True)
-        return fig, ax
-
-    def add_data_to_mag_phase_plot(
-        self, ax, f, mag, phase, mag_unc=None, phase_unc=None, l=None, c=None, lw=1
-    ):
-        # plotting arguments
-        kwargs = {"label": l, "color": c, "linewidth": lw}
-
-        # plot mag, mag_unc (if available)
-        ax[0].plot(f, mag, **kwargs)
-        if isinstance(mag_unc, (list, np.ndarray)):
-            ax[1].semilogy(f, mag_unc, **kwargs)
-
-        # plot phase, phase_unc (if available)
-        ax[2].plot(f, np.rad2deg(phase), **kwargs)
-        if isinstance(phase_unc, (list, np.ndarray)):
-            ax[3].semilogy(f, np.rad2deg(phase_unc), **kwargs)
-
-    def add_description_mag_phase_plot(self, ax):
-        ax[0].legend()
-        ax[0].set_title("Frequency Domain")
-        ax[0].set_ylabel("magnitude [-]")
-        ax[1].set_ylabel("magnitude unc [-]")
-        ax[2].set_ylabel("phase [°]")
-        ax[3].set_ylabel("phase unc [°]")
-        ax[3].set_xlabel("f [GHz]")
-
-        return ax
-
-
 class BaseMethods:
     def __init__(self):
-        self.plotting = PlotMethods()
+        pass
 
     ############################################################
     ### high level calls #######################################
@@ -65,37 +30,24 @@ class BaseMethods:
 
     def compare_different_datasets(self, create_plot=True):
         # main empirical data (Type A, but only very few samples)
-        data_emp = self.load_data(
-            "empirical_cov", return_mag_phase=True, return_full_cov=False
-        )
+        data_emp = self.load_data("empirical_cov", return_full_cov=False)
 
         # mag-phase-diag only (Type B)
-        data_raw = self.load_data(
-            "diag_only", return_mag_phase=True, return_full_cov=False
-        )
+        data_raw = self.load_data("diag_only", return_full_cov=False)
 
         # simulated data (no unc)
-        data_sim = self.load_data(
-            "simulated", return_mag_phase=True, return_full_cov=False
-        )
+        data_sim = self.load_data("simulated", return_full_cov=False)
 
         if create_plot:
-            # visualize raw input in the frequency domain
-            fig, ax = self.plotting.init_mag_phase_plot()
-
             args_emp = {"l": "statistical cov.", "c": "tab:gray", "lw": 4}
             args_raw = {"l": "diag only (Type B)", "c": "tab:red"}
             args_sim = {"l": "simulated", "c": "tab:blue"}
-
-            self.plotting.add_data_to_mag_phase_plot(ax, *data_emp, **args_emp)
-            self.plotting.add_data_to_mag_phase_plot(ax, *data_raw, **args_raw)
-            self.plotting.add_data_to_mag_phase_plot(ax, *data_sim, **args_sim)
-
-            ax = self.plotting.add_description_mag_phase_plot(ax)
-            plt.show()
-    
-    def perform_time_gating_method_1(self, data, config):
         
+            plotdata = [[data_emp, args_emp], [data_raw, args_raw], [data_sim, args_sim]]
+            
+            self.mag_phase_plot(plotdata)
+
+    def perform_time_gating_method_1(self, data, config):
         # data shotcuts
         f = data["f"]
         s_ri = data["s_ri"]
@@ -116,14 +68,19 @@ class BaseMethods:
             pad_len = 0
             Nx = len(s_ri) - 1
         Nx_mod = Nx + pad_len
-        
+
         # apply the gate in the TD
         if config["gate"] is not None:
             time = config["gate"]["time"]
-            time_mod = np.arange(0, Nx_mod) * (time[1] - time[0]) * Nx / float(Nx_mod) + time[0]  # from scipy resample
+            time_mod = (
+                np.arange(0, Nx_mod) * (time[1] - time[0]) * Nx / float(Nx_mod)
+                + time[0]
+            )  # from scipy resample
             gate_func = config["gate"]["gate_func"]
-            gate_array, gate_array_cov = gate_func(time_mod)  # the gate corresponding to a higher time resolution (to match the zero padding)
-        
+            gate_array, gate_array_cov = gate_func(
+                time_mod
+            )  # the gate corresponding to a higher time resolution (to match the zero padding)
+
             # convert (modified) reflection data to time domain
             S, S_cov = GUM_iDFT(s_ri, s_ri_cov, Nx=Nx_mod)
 
@@ -133,26 +90,37 @@ class BaseMethods:
 
             # actual gating
             S_gated = S * gate_array
-            S_gated_cov = np.diag(gate_array) @ S_cov @ np.diag(gate_array).T + np.diag(S) @ gate_array_cov @ np.diag(S).T
+            S_gated_cov = (
+                np.diag(gate_array) @ S_cov @ np.diag(gate_array).T
+                + np.diag(S) @ gate_array_cov @ np.diag(S).T
+            )
             s_gated_ri, s_gated_ri_cov = GUM_DFT(S_gated, S_gated_cov)
 
         # undo zero-padding
         if config["zeropad"] is not None:
-            s_gated_ri = trimOrPad(s_gated_ri, length=len(f), real_imag_type=True) * Nx / Nx_mod
-            s_gated_ri_cov = trimOrPad(s_gated_ri_cov, length=len(f), real_imag_type=True) * Nx / Nx_mod
+            s_gated_ri = (
+                trimOrPad(s_gated_ri, length=len(f), real_imag_type=True) * Nx / Nx_mod
+            )
+            s_gated_ri_cov = (
+                trimOrPad(s_gated_ri_cov, length=len(f), real_imag_type=True)
+                * Nx
+                / Nx_mod
+            )
 
         # undo windowing
         if config["window"] is not None:
             if config["window"]["val"] is not None:
-                s_gated_ri, s_gated_ri_cov = self.apply_window(s_gated_ri, 1.0 / window, s_gated_ri_cov, None)
+                s_gated_ri, s_gated_ri_cov = self.apply_window(
+                    s_gated_ri, 1.0 / window, s_gated_ri_cov, None
+                )
 
         # apply renormalization
         if config["renormalization"] is not None:
             renorm = config["renormalization"]
             s_gated_ri = renorm(s_gated_ri)
-        
+
         return s_gated_ri, s_gated_ri_cov
-    
+
     def perform_time_gating_method_2(self, data, config):
         # data shotcuts
         f = data["f"]
@@ -172,14 +140,21 @@ class BaseMethods:
         # evaluate
         n_runs = 100
         results = []
-        for s_ri_mc, gate_array_mc in zip(*draw_samples(size=n_runs, x1=s_ri, x1_cov=s_ri_cov, x2=gate_array, x2_cov=gate_array_cov)):
-            data_mc  = {"f": f, "s_ri": s_ri_mc, "s_ri_cov": None}
+        for s_ri_mc, gate_array_mc in zip(
+            *draw_samples(
+                size=n_runs,
+                x1=s_ri,
+                x1_cov=s_ri_cov,
+                x2=gate_array,
+                x2_cov=gate_array_cov,
+            )
+        ):
+            data_mc = {"f": f, "s_ri": s_ri_mc, "s_ri_cov": None}
             config_mc = copy.copy(config)
             config_mc["gate"] = {"val": gate_array_mc}
 
             s_gated_ri = self.perform_time_gating_method_2_core(data_mc, config)
             results.append(s_gated_ri)
-            
 
         # extract mean and covariance
         s_gated_ri = np.mean(results, axis=0)
@@ -187,9 +162,8 @@ class BaseMethods:
         s_gated = ri2c(s_gated_ri)
 
         return s_gated_ri, s_gated_ri_cov
-     
+
     def perform_time_gating_method_2_core(self, data, config):
-        
         # data shotcuts
         f = data["f"]
         s_ri = data["s_ri"]
@@ -205,27 +179,42 @@ class BaseMethods:
             pad_len = config["zeropad"]["pad_len"]
             Nx = config["zeropad"]["Nx"]
             Nx_mod = Nx + pad_len
-            
-            s_ri = trimOrPad(s_ri, length=len(f) + pad_len//2, real_imag_type=True) * Nx_mod / Nx
+
+            s_ri = (
+                trimOrPad(s_ri, length=len(f) + pad_len // 2, real_imag_type=True)
+                * Nx_mod
+                / Nx
+            )
 
         # transfer gate into FD
         if config["gate"] is not None:
             if "val" in config["gate"].keys():
-                gate_array =  config["gate"]["val"] # shortcut to enable Monte Carlo of this
+                gate_array = config["gate"][
+                    "val"
+                ]  # shortcut to enable Monte Carlo of this
             else:
                 time = config["gate"]["time"]
-                time_mod = np.arange(0, Nx_mod) * (time[1] - time[0]) * Nx / float(Nx_mod) + time[0]  # from scipy resample
+                time_mod = (
+                    np.arange(0, Nx_mod) * (time[1] - time[0]) * Nx / float(Nx_mod)
+                    + time[0]
+                )  # from scipy resample
                 gate_func = config["gate"]["gate_func"]
-                gate_array, _ = gate_func(time_mod)  # the gate corresponding to a higher time resolution (to match the zero padding)
-        
+                gate_array, _ = gate_func(
+                    time_mod
+                )  # the gate corresponding to a higher time resolution (to match the zero padding)
+
             gate_spectrum = np.fft.rfft(gate_array)
 
         # apply gate in the FD
-        s_gated = self.complex_convolution_of_two_half_spectra(ri2c(s_ri), gate_spectrum)
+        s_gated = self.complex_convolution_of_two_half_spectra(
+            ri2c(s_ri), gate_spectrum
+        )
 
         # undo zeropad signal
         if config["zeropad"] is not None:
-            s_gated = trimOrPad(s_gated, length=len(f), real_imag_type=False) * Nx / Nx_mod
+            s_gated = (
+                trimOrPad(s_gated, length=len(f), real_imag_type=False) * Nx / Nx_mod
+            )
 
         # undo windowing
         if config["window"] is not None:
@@ -236,7 +225,7 @@ class BaseMethods:
         if config["renormalization"] is not None:
             renorm = config["renormalization"]
             s_gated_ri = renorm(s_gated_ri)
-        
+
         # convert back into real-imag-representation
         s_gated_ri = c2ri(s_gated)
 
@@ -248,7 +237,11 @@ class BaseMethods:
     ############################################################
 
     def load_data(self, name="", return_mag_phase=False, return_full_cov=True):
-        rel_path = "data/" # "../data/"
+        # check where data is (to preserve compatibility between jupyter and python call)
+        if os.path.exists("data/"):
+            rel_path = "data/"
+        elif os.path.exists("../data/"):
+            rel_path = "../data/"
 
         if name == "diag_only":
             # load reflection data
@@ -480,18 +473,69 @@ class BaseMethods:
         if kind == "nowindow":
             w = None
             uw = None
-        
+
         if kind == "neutral":
             w = np.ones(size)
             uw = np.zeros((size, size))
-        
+
         if kind == "kaiser":
-            w = signal.windows.get_window(("kaiser", 0.5 * np.pi), Nx=size, fftbins=False)
+            w = signal.windows.get_window(
+                ("kaiser", 0.5 * np.pi), Nx=size, fftbins=False
+            )
             uw = np.zeros((size, size))
-        
+
         if not kind == "nowindow":
             w *= w.size / np.sum(w)
             uw *= w.size / np.sum(w)
-        
+
         return w, uw
+
+
+    ############################################################
+    ### plotting stuff #########################################
+    ############################################################
+
+    def mag_phase_plot(self, plotdata):
+        fig, ax = self.init_mag_phase_plot()
+
+        for (data, args) in plotdata:
+            self.add_data_to_mag_phase_plot(ax, *data, **args)
         
+        ax = self.add_description_mag_phase_plot(ax)
+        plt.show()
+
+    def init_mag_phase_plot(self):
+        fig, ax = plt.subplots(nrows=4, figsize=(8, 8), tight_layout=True)
+        return fig, ax
+
+    def add_data_to_mag_phase_plot(
+        self, ax, f, s_ri, s_ri_cov=None, l=None, c=None, lw=1
+    ):
+        # convert to mag-phase-representation
+        mag, phase, mag_unc, phase_unc = self.convert_ri_cov_to_mag_phase_unc(
+            s_ri, s_ri_cov
+        )
+
+        # plotting arguments
+        kwargs = {"label": l, "color": c, "linewidth": lw}
+
+        # plot mag, mag_unc (if available)
+        ax[0].plot(f, mag, **kwargs)
+        if isinstance(mag_unc, (list, np.ndarray)):
+            ax[1].semilogy(f, mag_unc, **kwargs)
+
+        # plot phase, phase_unc (if available)
+        ax[2].plot(f, np.rad2deg(phase), **kwargs)
+        if isinstance(phase_unc, (list, np.ndarray)):
+            ax[3].semilogy(f, np.rad2deg(phase_unc), **kwargs)
+
+    def add_description_mag_phase_plot(self, ax):
+        ax[0].legend()
+        ax[0].set_title("Frequency Domain")
+        ax[0].set_ylabel("magnitude [-]")
+        ax[1].set_ylabel("magnitude unc [-]")
+        ax[2].set_ylabel("phase [°]")
+        ax[3].set_ylabel("phase unc [°]")
+        ax[3].set_xlabel("f [GHz]")
+
+        return ax

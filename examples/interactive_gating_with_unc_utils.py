@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 from matplotlib import colors
 
+import copy
 import numpy as np
 import pandas
 from scipy.ndimage import convolve1d
@@ -150,11 +151,42 @@ class BaseMethods:
             renorm = config["renormalization"]
             s_gated_ri = renorm(s_gated_ri)
         
-        return s_gated_ri
+        return s_gated_ri, s_gated_ri_cov
     
     def perform_time_gating_method_2(self, data, config):
-        # MC around perform_time_gating_method_2_core
-        pass
+        # data shotcuts
+        f = data["f"]
+        s_ri = data["s_ri"]
+        s_ri_cov = data["s_ri_cov"]
+
+        time = config["gate"]["time"]
+        gate_func = config["gate"]["gate_func"]
+        gate_array, gate_array_cov = gate_func(time)
+
+        # draw gate and signal
+        def draw_samples(size, x1, x1_cov, x2, x2_cov):
+            SAMPLES_X1 = np.random.multivariate_normal(x1, x1_cov, size)
+            SAMPLES_X2 = np.random.multivariate_normal(x2, x2_cov, size)
+            return (SAMPLES_X1, SAMPLES_X2)
+
+        # evaluate
+        n_runs = 100
+        results = []
+        for s_ri_mc, gate_array_mc in zip(*draw_samples(size=n_runs, x1=s_ri, x1_cov=s_ri_cov, x2=gate_array, x2_cov=gate_array_cov)):
+            data_mc  = {"f": f, "s_ri": s_ri_mc, "s_ri_cov": None}
+            config_mc = copy.copy(config)
+            config_mc["gate"] = {"val": gate_array_mc}
+
+            s_gated_ri = self.perform_time_gating_method_2_core(data_mc, config)
+            results.append(s_gated_ri)
+            
+
+        # extract mean and covariance
+        s_gated_ri = np.mean(results, axis=0)
+        s_gated_ri_cov = np.cov(results, rowvar=False)
+        s_gated = ri2c(s_gated_ri)
+
+        return s_gated_ri, s_gated_ri_cov
      
     def perform_time_gating_method_2_core(self, data, config):
         
@@ -178,9 +210,13 @@ class BaseMethods:
 
         # transfer gate into FD
         if config["gate"] is not None:
-            time = config["gate"]["time"]
-            gate_func = config["gate"]["gate_func"]
-            gate_array, _ = gate_func(time)
+            if "val" in config["gate"].keys():
+                gate_array =  config["gate"]["val"] # shortcut to enable Monte Carlo of this
+            else:
+                time = config["gate"]["time"]
+                time_mod = np.arange(0, Nx_mod) * (time[1] - time[0]) * Nx / float(Nx_mod) + time[0]  # from scipy resample
+                gate_func = config["gate"]["gate_func"]
+                gate_array, _ = gate_func(time_mod)  # the gate corresponding to a higher time resolution (to match the zero padding)
         
             gate_spectrum = np.fft.rfft(gate_array)
 

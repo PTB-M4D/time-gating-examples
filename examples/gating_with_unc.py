@@ -22,15 +22,25 @@ gate = lambda t: base.gate(t, t_start=0.0, t_end=0.18, kind="kaiser", order=2.5*
 data = {"f": f, "s_ri": s11_ri, "s_ri_cov": s11_ri_cov}
 config = {
     "window": {"val": w, "cov": uw},
-    "zeropad": {"pad_len": 1000, "Nx": Nx},
+    "zeropad": {"pad_len": 2500, "Nx": Nx},
     "gate": {"gate_func": gate, "time": t},
     "renormalization": None,
 }
 
 # call different time gating implementations on same data+config
-a = base.perform_time_gating_method_1(data, config)
+a, a_cov = base.perform_time_gating_method_1(data, config)
 b = base.perform_time_gating_method_2_core(data, config)
+#c, c_cov = base.perform_time_gating_method_2(data, config)
 
 # compare quickly
+import matplotlib.pyplot as plt
+plt.plot(a, label="m1")
+plt.plot(b, label="m2c")
+#plt.plot(c, label="m2")
+#plt.plot(a-b, label="diff")
+plt.legend()
+plt.show()
+
 print(a)
 print(b)
+print(c)

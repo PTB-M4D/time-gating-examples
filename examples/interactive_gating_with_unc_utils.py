@@ -7,7 +7,12 @@ from scipy.ndimage import convolve1d
 from scipy import signal, special
 from scipy.linalg import block_diag
 
-from PyDynamic.uncertainty.propagate_DFT import GUM_iDFT, GUM_DFT, DFT2AmpPhase, AmpPhase2DFT
+from PyDynamic.uncertainty.propagate_DFT import (
+    GUM_iDFT,
+    GUM_DFT,
+    DFT2AmpPhase,
+    AmpPhase2DFT,
+)
 from PyDynamic.misc import complex_2_real_imag as c2ri
 from PyDynamic.misc import real_imag_2_complex as ri2c
 from PyDynamic.misc.tools import shift_uncertainty
@@ -30,9 +35,11 @@ def load_data(name="", return_mag_phase=False, return_full_cov=True):
         s_param_phase_unc = np.r_[0, df.iloc[:, 4]] / 180 * np.pi
 
         # translate into PyDynamic-internal Re/Im-representation
-        s_param_UAP =  np.square(np.r_[s_param_mag_unc, s_param_phase_unc])
-        s_param_ri, s_param_ri_cov = AmpPhase2DFT(s_param_mag, s_param_phase, s_param_UAP)
-    
+        s_param_UAP = np.square(np.r_[s_param_mag_unc, s_param_phase_unc])
+        s_param_ri, s_param_ri_cov = AmpPhase2DFT(
+            s_param_mag, s_param_phase, s_param_UAP
+        )
+
     elif name == "empirical_cov":
         file_reflection = "Beatty Line New Type-A Re Im Data.xlsx"
         dfs = pandas.read_excel(rel_path + file_reflection, skiprows=1, sheet_name=None)
@@ -41,10 +48,12 @@ def load_data(name="", return_mag_phase=False, return_full_cov=True):
         f = np.r_[0, df0.iloc[:, 0]]  # GHz
 
         # load raw data from all individual experiments (separate sheets)
-        s_param_runs_raw = np.array([df.iloc[:, 1] + 1j * df.iloc[:, 2] for df in dfs.values()])
+        s_param_runs_raw = np.array(
+            [df.iloc[:, 1] + 1j * df.iloc[:, 2] for df in dfs.values()]
+        )
 
         # include new datapoint at 0Hz which is required for discrete Fourier transform
-        s_param_runs_0Hz = np.atleast_2d(np.absolute(s_param_runs_raw[:,0])).T
+        s_param_runs_0Hz = np.atleast_2d(np.absolute(s_param_runs_raw[:, 0])).T
         s_param_runs = np.concatenate([s_param_runs_0Hz, s_param_runs_raw], axis=1)
 
         # convert data into PyDynamic-real-imag representation
@@ -55,7 +64,9 @@ def load_data(name="", return_mag_phase=False, return_full_cov=True):
         s_param_ri_cov = np.cov(s_param_ri_runs, rowvar=False)
 
         # get magnitude-phase representation for representation purposes
-        s_param_mag, s_param_phase, s_param_UAP = DFT2AmpPhase(s_param_ri, s_param_ri_cov)
+        s_param_mag, s_param_phase, s_param_UAP = DFT2AmpPhase(
+            s_param_ri, s_param_ri_cov
+        )
         s_param_mag_unc, s_param_phase_unc = mag_phase_unc_from_cov(s_param_UAP)
 
     elif name == "simulated":
@@ -68,7 +79,9 @@ def load_data(name="", return_mag_phase=False, return_full_cov=True):
         s_param_ri_cov = np.zeros((len(s_param_ri), len(s_param_ri)))
 
         # get magnitude-phase representation for representation purposes
-        s_param_mag, s_param_phase, s_param_UAP = DFT2AmpPhase(s_param_ri, s_param_ri_cov)
+        s_param_mag, s_param_phase, s_param_UAP = DFT2AmpPhase(
+            s_param_ri, s_param_ri_cov
+        )
         s_param_mag_unc, s_param_phase_unc = mag_phase_unc_from_cov(s_param_UAP)
 
     if return_full_cov:
@@ -81,7 +94,7 @@ def load_data(name="", return_mag_phase=False, return_full_cov=True):
             return f, s_param_mag, s_param_phase, s_param_mag_unc, s_param_phase_unc
         else:
             return f, s_param_ri, real_imag_unc_from_cov(s_param_ri_cov)
-    
+
 
 def mag_phase_unc_from_cov(s_param_UAP):
     N = len(s_param_UAP) // 2
@@ -89,8 +102,10 @@ def mag_phase_unc_from_cov(s_param_UAP):
     s_param_phase_unc = np.sqrt(np.diag(s_param_UAP)[N:])
     return s_param_mag_unc, s_param_phase_unc
 
+
 def real_imag_unc_from_cov(s_param_ri_cov):
     return np.sqrt(np.diag(s_param_ri_cov))
+
 
 def convert_ri_cov_to_mag_phase_unc(s_param_ri, s_param_ri_cov):
     s_param_mag, s_param_phase, s_param_UAP = DFT2AmpPhase(s_param_ri, s_param_ri_cov)
@@ -98,9 +113,10 @@ def convert_ri_cov_to_mag_phase_unc(s_param_ri, s_param_ri_cov):
 
     return s_param_mag, s_param_phase, s_param_mag_unc, s_param_phase_unc
 
+
 def elementwise_multiply(A, B, cov_A, cov_B):
     """
-        elementwise multiplication of two real signals A and B
+    elementwise multiplication of two real signals A and B
     """
 
     R = A * B
@@ -108,15 +124,16 @@ def elementwise_multiply(A, B, cov_A, cov_B):
 
     return R, cov_R
 
-def apply_window(A, W, cov_A, cov_W = None):
-    """
-        A \in R^2N uses PyDynamic real-imag representation of a complex vector \in C^N
-        A = [A_re, A_im] 
 
-        W \in R^N is real-valued window
-        
-        R is result in real-imag representation, element-wise application of window (separately for real and imag values)
-        R = [A_re * W, A_im * W]
+def apply_window(A, W, cov_A, cov_W=None):
+    """
+    A \in R^2N uses PyDynamic real-imag representation of a complex vector \in C^N
+    A = [A_re, A_im]
+
+    W \in R^N is real-valued window
+
+    R is result in real-imag representation, element-wise application of window (separately for real and imag values)
+    R = [A_re * W, A_im * W]
     """
     R = A * np.r_[W, W]
 
@@ -126,7 +143,7 @@ def apply_window(A, W, cov_A, cov_W = None):
 
     # this should be the same, but is computationally faster
     WW = np.r_[W, W]
-    cov_R = WW * cov_A * WW[:,np.newaxis] 
+    cov_R = WW * cov_A * WW[:, np.newaxis]
 
     if isinstance(cov_W, np.ndarray):
         # this results from applying GUM
@@ -135,60 +152,71 @@ def apply_window(A, W, cov_A, cov_W = None):
         # cov_R += CW @ block_diag(cov_W, cov_W) @ CW.T
 
         # this should be the same, but is computationally faster
-        cov_R += A * block_diag(cov_W, cov_W) * A[:,np.newaxis] 
-    
+        cov_R += A * block_diag(cov_W, cov_W) * A[:, np.newaxis]
+
     return R, cov_R
+
 
 def gate(ts, t_start=0.0, t_end=1.0, kind="kaiser", order=0.0):
     # kaiser order: 0 -> rect, +\infty -> gaussian
 
     mask = np.logical_and(ts >= t_start, ts <= t_end)
     gate = np.zeros(mask.size)
-    
+
     width = np.sum(mask)
     if width:
         base_shape = signal.get_window((kind, order), width, fftbins=False)
         gate[mask] = base_shape
-    
+
     # heuristic model for gate unc, probably too complicated :-)
-    gate_unc = np.zeros(gate.size) # 1e-5*np.abs(signal.filtfilt(*signal.butter(1, 0.30, "lowpass"), np.abs(np.diff(np.r_[gate, 0])), padlen=100)) 
+    gate_unc = np.zeros(
+        gate.size
+    )  # 1e-5*np.abs(signal.filtfilt(*signal.butter(1, 0.30, "lowpass"), np.abs(np.diff(np.r_[gate, 0])), padlen=100))
 
     return gate, gate_unc
 
-def agilent_gate(ts, t_start=0.0, t_end=1.0, kind="kaiser", order=6.5):
 
+def agilent_gate(ts, t_start=0.0, t_end=1.0, kind="kaiser", order=6.5):
     # base gate
     Gate_rect, Gate_rect_unc = gate(ts, t_start, t_end, kind="kaiser", order=0.0)
 
     # spectrum of base gate
-    gate_rect_ri, gate_rect_ri_cov = GUM_DFT(Gate_rect, np.diag(np.square(Gate_rect_unc)))
+    gate_rect_ri, gate_rect_ri_cov = GUM_DFT(
+        Gate_rect, np.diag(np.square(Gate_rect_unc))
+    )
 
     # gate-window
-    width = len(gate_rect_ri//2)
-    window_gate = signal.get_window((kind, order), width, fftbins=False)[width//2:]
+    width = len(gate_rect_ri // 2)
+    window_gate = signal.get_window((kind, order), width, fftbins=False)[width // 2 :]
 
-    gate_times_window_ri, gate_times_window_ri_cov = apply_window(gate_rect_ri, window_gate, gate_rect_ri_cov, None)
+    gate_times_window_ri, gate_times_window_ri_cov = apply_window(
+        gate_rect_ri, window_gate, gate_rect_ri_cov, None
+    )
 
-    agilant_gate, agilant_gate_cov = GUM_iDFT(gate_times_window_ri, gate_times_window_ri_cov, Nx=ts.size)
+    agilant_gate, agilant_gate_cov = GUM_iDFT(
+        gate_times_window_ri, gate_times_window_ri_cov, Nx=ts.size
+    )
     agilant_gate_unc = np.sqrt(np.diag(agilant_gate_cov))
-    
+
     return agilant_gate, agilant_gate_unc
 
 
 def make_twosided(x):
     # returns the twosided spectrum with f=0 at the start (default numpy style)
-    # x = x_re + 1j * x_im 
+    # x = x_re + 1j * x_im
     x_twosided = np.r_[x, np.conjugate(x[1:][::-1])]  # odd signal length
-    #x_twosided = np.r_[x, np.conjugate(x[::-1])]  # even signal length (default assumption for rfft)
+    # x_twosided = np.r_[x, np.conjugate(x[::-1])]  # even signal length (default assumption for rfft)
     return x_twosided
+
 
 def make_onesided(x):
     # returns the twosided spectrum with f=0 at the start (default numpy style)
     # x = x_re + 1j * x_im, (size = 2*N - 1)
-    N = (x.size + 1) // 2   # odd signal length
-    #N = x.size // 2   # even signal length
+    N = (x.size + 1) // 2  # odd signal length
+    # N = x.size // 2   # even signal length
     x_onesided = x[:N]
     return x_onesided
+
 
 def complex_convolution_of_two_half_spectra(X, Y):
     # complex valued X, Y
@@ -198,7 +226,7 @@ def complex_convolution_of_two_half_spectra(X, Y):
     YY = make_twosided(Y)
 
     # otherwise not strict ascending order (numpy default has f=0 at index 0, not in the middle)
-    XX = np.fft.fftshift(XX) 
+    XX = np.fft.fftshift(XX)
     YY = np.fft.fftshift(YY)
 
     # actual convolution

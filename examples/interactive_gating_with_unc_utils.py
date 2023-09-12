@@ -42,16 +42,23 @@ class BaseMethods:
             args_emp = {"l": "statistical cov.", "c": "tab:gray", "lw": 4}
             args_raw = {"l": "diag only (Type B)", "c": "tab:red"}
             args_sim = {"l": "simulated", "c": "tab:blue"}
-        
-            plotdata = [[data_emp, args_emp], [data_raw, args_raw], [data_sim, args_sim]]
-            
+
+            plotdata = [
+                [data_emp, args_emp],
+                [data_raw, args_raw],
+                [data_sim, args_sim],
+            ]
+
             self.mag_phase_plot(plotdata)
 
-    def perform_time_gating_method_1(self, data, config):
+    def perform_time_gating_method_1(self, data, config, return_internal_data=False):
         # data shotcuts
         f = data["f"]
         s_ri = data["s_ri"]
         s_ri_cov = data["s_ri_cov"]
+
+        # result data structure
+        result = self.init_return_dict(return_internal_data)
 
         # apply window in FD
         if config["window"] is not None:
@@ -81,12 +88,22 @@ class BaseMethods:
                 time_mod
             )  # the gate corresponding to a higher time resolution (to match the zero padding)
 
+            if return_internal_data:
+                result["internal"]["gate"]["t"] = time_mod
+                result["internal"]["gate"]["val"] = gate_array
+                result["internal"]["gate"]["cov"] = gate_array_cov
+
             # convert (modified) reflection data to time domain
             S, S_cov = GUM_iDFT(s_ri, s_ri_cov, Nx=Nx_mod)
 
             # compensate the padding
             S *= Nx_mod / Nx
             S_cov *= Nx_mod / Nx
+
+            if return_internal_data:
+                result["internal"]["modified"]["t"] = time_mod
+                result["internal"]["modified"]["val"] = copy.copy(S)
+                result["internal"]["modified"]["cov"] = copy.copy(S_cov)
 
             # actual gating
             S_gated = S * gate_array
@@ -119,13 +136,21 @@ class BaseMethods:
             renorm = config["renormalization"]
             s_gated_ri = renorm(s_gated_ri)
 
-        return s_gated_ri, s_gated_ri_cov
+        # prepare output
+        result["data"]["f"] = f
+        result["data"]["val"] = s_gated_ri
+        result["data"]["cov"] = s_gated_ri_cov
 
-    def perform_time_gating_method_2(self, data, config):
+        return result
+
+    def perform_time_gating_method_2(self, data, config, return_internal_data=False):
         # data shotcuts
         f = data["f"]
         s_ri = data["s_ri"]
         s_ri_cov = data["s_ri_cov"]
+
+        # result data structure
+        result = self.init_return_dict(return_internal_data)
 
         time = config["gate"]["time"]
         gate_func = config["gate"]["gate_func"]
@@ -161,7 +186,12 @@ class BaseMethods:
         s_gated_ri_cov = np.cov(results, rowvar=False)
         s_gated = ri2c(s_gated_ri)
 
-        return s_gated_ri, s_gated_ri_cov
+        # prepare output
+        result["data"]["f"] = f
+        result["data"]["val"] = s_gated_ri
+        result["data"]["cov"] = s_gated_ri_cov
+
+        return result
 
     def perform_time_gating_method_2_core(self, data, config):
         # data shotcuts
@@ -189,9 +219,7 @@ class BaseMethods:
         # transfer gate into FD
         if config["gate"] is not None:
             if "val" in config["gate"].keys():
-                gate_array = config["gate"][
-                    "val"
-                ]  # shortcut to enable Monte Carlo of this
+                gate_array = config["gate"]["val"]  # enable Monte Carlo of this
             else:
                 time = config["gate"]["time"]
                 time_mod = (
@@ -230,7 +258,6 @@ class BaseMethods:
         s_gated_ri = c2ri(s_gated)
 
         return s_gated_ri
-
 
     ############################################################
     ### low level calls ########################################
@@ -490,22 +517,48 @@ class BaseMethods:
 
         return w, uw
 
+    def init_return_dict(self, return_internal_data):
+        result = {}
+        result["data"] = self.data_series(freq=True)
+        if return_internal_data:
+            result["internal"] = {
+                "gate": self.data_series(time=True),
+                "modified": self.data_series(time=True),
+            }
+
+        return result
+
+    def data_series(self, freq=False, time=False):
+        mdo = {}
+
+        if time:
+            mdo["t"] = None
+
+        if freq:
+            mdo["f"] = None
+
+        mdo["val"] = None
+        mdo["cov"] = None
+
+        return mdo
 
     ############################################################
     ### plotting stuff #########################################
     ############################################################
 
-    def mag_phase_plot(self, plotdata):
+    def mag_phase_plot(self, plotdata, use_base_style=True, custom_style=None):
         fig, ax = self.init_mag_phase_plot()
 
-        for (data, args) in plotdata:
+        for data, args in plotdata:
             self.add_data_to_mag_phase_plot(ax, *data, **args)
-        
-        ax = self.add_description_mag_phase_plot(ax)
+
+        ax = self.add_description_mag_phase_plot(
+            ax, use_base_style=use_base_style, custom_style=custom_style
+        )
         plt.show()
 
     def init_mag_phase_plot(self):
-        fig, ax = plt.subplots(nrows=4, figsize=(8, 8), tight_layout=True)
+        fig, ax = plt.subplots(nrows=4, figsize=(8, 8), sharex=True, tight_layout=True)
         return fig, ax
 
     def add_data_to_mag_phase_plot(
@@ -529,13 +582,107 @@ class BaseMethods:
         if isinstance(phase_unc, (list, np.ndarray)):
             ax[3].semilogy(f, np.rad2deg(phase_unc), **kwargs)
 
-    def add_description_mag_phase_plot(self, ax):
-        ax[0].legend()
-        ax[0].set_title("Frequency Domain")
-        ax[0].set_ylabel("magnitude [-]")
-        ax[1].set_ylabel("magnitude unc [-]")
-        ax[2].set_ylabel("phase [°]")
-        ax[3].set_ylabel("phase unc [°]")
-        ax[3].set_xlabel("f [GHz]")
+    mag_phase_plot_style = {
+        0: {
+            "title": "Frequency Domain",
+            "ylabel": "magnitude [-]",
+        },
+        1: {
+            "ylabel": "magnitude unc [-]",
+        },
+        2: {
+            "ylabel": "phase [°]",
+        },
+        3: {
+            "ylabel": "phase unc [°]",
+            "xlabel": "f [GHz]",
+        },
+    }
+
+    def add_description_mag_phase_plot(
+        self, ax, use_base_style=True, custom_style=None
+    ):
+        # the default look
+        if use_base_style:
+            ax[0].legend()
+            for i_axis, style_adjustments in self.mag_phase_plot_style.items():
+                plt.setp(ax[i_axis], **style_adjustments)
+
+        # the default look
+        if isinstance(custom_style, dict):
+            for i_axis, style_adjustments in custom_style.items():
+                plt.setp(ax[i_axis], **style_adjustments)
+
+        return ax
+
+
+    def time_domain_plot(self, plotdata, use_base_style=True, custom_style=None, last_dataset_has_own_axis=False):
+        fig, ax = self.init_time_domain_plot()
+
+        if last_dataset_has_own_axis:
+            ax2 = [None, None]
+            ax2[0] = ax[0].twinx()
+            ax2[1] = ax[1].twinx()
+
+        for i, (data, args) in enumerate(plotdata):
+            last_iteration = i == len(plotdata) - 1
+            if last_dataset_has_own_axis and last_iteration: # last data set
+                self.add_data_to_time_domain_plot(ax2, *data, **args) 
+            else:
+                self.add_data_to_time_domain_plot(ax, *data, **args)
+
+        if last_dataset_has_own_axis: 
+            ax2[0].legend(loc="upper center")
+        
+        ax = self.add_description_time_domain_plot(
+            ax, use_base_style=use_base_style, custom_style=custom_style
+        )
+        plt.show()
+
+    def init_time_domain_plot(self):
+        fig, ax = plt.subplots(nrows=2, figsize=(8, 8), sharex=True, tight_layout=True)
+        return fig, ax
+
+    def add_data_to_time_domain_plot(
+        self, ax, t, val, cov=None, l=None, c=None, lw=1
+    ):
+        # shift time series so zero is at the centers
+        t_span = t[-1] - t[0]
+        t_shifted = t - t_span/2
+        val_shifted, cov_shifted = shift_uncertainty(val, cov, shift=len(t)//2)
+
+        # plotting arguments
+        kwargs = {"label": l, "color": c, "linewidth": lw}
+
+        # plot mag, mag_unc (if available)
+        ax[0].plot(t_shifted, np.abs(val_shifted), **kwargs)
+        if isinstance(cov_shifted, (list, np.ndarray)):
+            unc_shifted = np.sqrt(np.diag(cov_shifted))
+            ax[1].semilogy(t_shifted, unc_shifted, **kwargs)
+
+    time_domain_plot_style = {
+        0: {
+            "title": "Time Domain",
+            "ylabel": "signal magnitude [-]",
+        },
+        1: {
+            "ylabel": "signal unc [-]",
+            "xlabel": "t [ns]",
+        },
+    }
+
+    def add_description_time_domain_plot(
+        self, ax, use_base_style=True, custom_style=None
+    ):
+        # the default look
+        if use_base_style:
+            ax[0].legend()
+            for i_axis, style_adjustments in self.time_domain_plot_style.items():
+                plt.setp(ax[i_axis], **style_adjustments)
+
+        # the default look
+        if isinstance(custom_style, dict):
+            for i_axis, style_adjustments in custom_style.items():
+                plt.setp(ax[i_axis], **style_adjustments)
 
         return ax

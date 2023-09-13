@@ -1,23 +1,19 @@
-import matplotlib.pyplot as plt
-from matplotlib import colors
-
-import os
 import copy
+import datetime
+import os
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas
-from scipy.ndimage import convolve1d
-from scipy import signal, special
-from scipy.linalg import block_diag
-
-from PyDynamic.uncertainty.propagate_DFT import (
-    GUM_iDFT,
-    GUM_DFT,
-    DFT2AmpPhase,
-    AmpPhase2DFT,
-)
+from matplotlib import colors
 from PyDynamic.misc import complex_2_real_imag as c2ri
 from PyDynamic.misc import real_imag_2_complex as ri2c
 from PyDynamic.misc.tools import shift_uncertainty, trimOrPad
+from PyDynamic.uncertainty.propagate_DFT import (GUM_DFT, AmpPhase2DFT,
+                                                 DFT2AmpPhase, GUM_iDFT)
+from scipy import signal, special
+from scipy.linalg import block_diag
+from scipy.ndimage import convolve1d
 
 
 class BaseMethods:

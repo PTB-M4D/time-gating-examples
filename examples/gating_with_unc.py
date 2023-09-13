@@ -23,43 +23,31 @@ gate = lambda t: base.gate(t, t_start=0.0, t_end=0.18, kind="kaiser", order=2.5 
 data = {"f": f, "s_ri": s11_ri, "s_ri_cov": s11_ri_cov}
 config = {
     "window": {"val": w, "cov": uw},
-    "zeropad": {"pad_len": 2500, "Nx": Nx},
+    "zeropad": {"pad_len": 200, "Nx": Nx},
     "gate": {"gate_func": gate, "time": t},
     "renormalization": None,
 }
-
-# call different time gating implementations on same data+config
-res_m1 = base.perform_time_gating_method_1(data, config, return_internal_data=True)
-# res_m2 = base.perform_time_gating_method_2(data, config)
-
-
-# settings to obtain raw signal in the time domain
 config_nomod = copy.deepcopy(config)
 config_nomod["window"] = None
 config_nomod["zeropad"] = None
-res_nomod = base.perform_time_gating_method_1(
-    data, config_nomod, return_internal_data=True
-)
 
+# call different time gating implementations on same data+config
+result_m1 = base.perform_time_gating_method_1(data, config, return_internal_data=True)
+result_m2 = base.perform_time_gating_method_2(data, config)
+result_nomod = base.perform_time_gating_method_1(data, config_nomod, return_internal_data=True)
 
-# visualize s-parameter and gate in the time-domain
+####################
+
 args_raw = {"l": "raw", "c": "tab:gray"}
 args_mod = {"l": "modified", "c": "tab:green", "lw": 2}
 args_gate = {"l": "gate", "c": "red"}
 
 plotdata_timedomain = [
-    [tuple(res_nomod["internal"]["modified"].values()), args_raw],
-    [tuple(res_m1["internal"]["modified"].values()), args_mod],
-    [tuple(res_m1["internal"]["gate"].values()), args_gate],
+    [tuple(result_nomod["internal"]["modified"].values()), args_raw],
+    [tuple(result_m1["internal"]["modified"].values()), args_mod],
+    [tuple(result_m1["internal"]["gate"].values()), args_gate],
 ]
 
-cs_timedomain = {
-    0: {
-        "xlim": (-0.1, 0.65),
-    }
-}
+cs_timedomain = {0: {"xlim": (-0.1, 0.65)}, 1: {"yscale": "linear"}}
 
-
-base.time_domain_plot(
-    plotdata_timedomain, custom_style=cs_timedomain, last_dataset_has_own_axis=True
-)
+base.export_to_excel(plotdata_timedomain)

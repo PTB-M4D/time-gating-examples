@@ -538,12 +538,53 @@ class BaseMethods:
 
         return mdo
 
+    def shift_time_data(self, t, val, cov):
+        t_span = t[-1] - t[0]
+        t_shifted = t - t_span / 2
+        val_shifted, cov_shifted = shift_uncertainty(val, cov, shift=len(t) // 2)
+
+        return t_shifted, val_shifted, cov_shifted
+
+    def export_to_excel(self, plotdata):
+        timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d_%H.%M.%SZ")
+        with pandas.ExcelWriter(f"export_{timestamp}.xlsx") as writer:
+
+            for (data, args) in plotdata:
+
+                (t, val, cov) = data
+                label = args["l"]
+                t_shifted, val_shifted, cov_shifted = self.shift_time_data(t, val, cov)
+
+                array_export = np.c_[t_shifted, val_shifted, np.sqrt(np.diag(cov_shifted))]
+                df_export = pandas.DataFrame(array_export)
+                df_export.columns = ["time", "signal", "signal_unc"]
+                df_export.to_excel(writer, sheet_name=label)
+                
     ############################################################
     ### plotting stuff #########################################
     ############################################################
 
+    def add_decoration_to_plot(
+        self, ax, base_style=None, custom_style=None, use_legend=True
+    ):
+        # the default look
+        if isinstance(base_style, dict):
+            if use_legend:
+                ax[0].legend()
+            for i_axis, style_adjustments in base_style.items():
+                plt.setp(ax[i_axis], **style_adjustments)
+
+        # some custom look
+        if isinstance(custom_style, dict):
+            for i_axis, style_adjustments in custom_style.items():
+                plt.setp(ax[i_axis], **style_adjustments)
+
+        return ax
+
+    ###
+
     def mag_phase_plot(self, plotdata, use_base_style=True, custom_style=None):
-        fig, ax = self.init_mag_phase_plot()
+        fig, ax = plt.subplots(nrows=4, figsize=(8, 8), sharex=True, tight_layout=True)
 
         for data, args in plotdata:
             self.add_data_to_mag_phase_plot(ax, *data, **args)
@@ -552,10 +593,6 @@ class BaseMethods:
             ax, use_base_style=use_base_style, custom_style=custom_style
         )
         plt.show()
-
-    def init_mag_phase_plot(self):
-        fig, ax = plt.subplots(nrows=4, figsize=(8, 8), sharex=True, tight_layout=True)
-        return fig, ax
 
     def add_data_to_mag_phase_plot(
         self, ax, f, s_ri, s_ri_cov=None, l=None, c=None, lw=1
@@ -578,42 +615,184 @@ class BaseMethods:
         if isinstance(phase_unc, (list, np.ndarray)):
             ax[3].semilogy(f, np.rad2deg(phase_unc), **kwargs)
 
-    mag_phase_plot_style = {
-        0: {
-            "title": "Frequency Domain",
-            "ylabel": "magnitude [-]",
-        },
-        1: {
-            "ylabel": "magnitude unc [-]",
-        },
-        2: {
-            "ylabel": "phase [°]",
-        },
-        3: {
-            "ylabel": "phase unc [°]",
-            "xlabel": "f [GHz]",
-        },
-    }
-
     def add_description_mag_phase_plot(
         self, ax, use_base_style=True, custom_style=None
     ):
-        # the default look
         if use_base_style:
-            ax[0].legend()
-            for i_axis, style_adjustments in self.mag_phase_plot_style.items():
-                plt.setp(ax[i_axis], **style_adjustments)
+            mag_phase_plot_style = {
+                0: {
+                    "title": "Frequency Domain",
+                    "ylabel": "magnitude [-]",
+                },
+                1: {
+                    "ylabel": "magnitude unc [-]",
+                },
+                2: {
+                    "ylabel": "phase [°]",
+                },
+                3: {
+                    "ylabel": "phase unc [°]",
+                    "xlabel": "f [GHz]",
+                },
+            }
+        else:
+            mag_phase_plot_style = None
 
-        # the default look
-        if isinstance(custom_style, dict):
-            for i_axis, style_adjustments in custom_style.items():
-                plt.setp(ax[i_axis], **style_adjustments)
+        ax = self.add_decoration_to_plot(ax, mag_phase_plot_style, custom_style)
 
         return ax
 
+    ###
 
-    def time_domain_plot(self, plotdata, use_base_style=True, custom_style=None, last_dataset_has_own_axis=False):
-        fig, ax = self.init_time_domain_plot()
+    def calculate_cnorm_ri_plot(self, plotdata):
+        min_abs_cov = [
+            1e-11,
+        ]
+        max_abs_cov = []
+
+        for data, args in plotdata:
+            f, s_ri, s_ri_cov = data
+
+            min_abs_cov.append(np.abs(s_ri_cov).min())
+            max_abs_cov.append(np.abs(s_ri_cov).max())
+
+        linthresh = max(min_abs_cov)
+        vmax = min(max_abs_cov)
+
+        cnorm = colors.SymLogNorm(vmin=-vmax, vmax=vmax, linthresh=linthresh)
+        return cnorm
+
+    def real_imag_covariance_plot(
+        self, plotdata, use_base_style=True, custom_style=None
+    ):
+        fig, ax = plt.subplots(nrows=1, figsize=(6, 6), tight_layout=True)
+
+        # extract relevant data
+        (data, args) = plotdata[0]
+        (f, s_ri, s_ri_cov) = data
+
+        cnorm = self.calculate_cnorm_ri_plot(plotdata)
+
+        img = ax.imshow(s_ri_cov, cmap="PuOr", norm=cnorm)
+        fig.colorbar(img, ax=ax)
+
+        ax = self.annotate_real_imag_plot(ax, f)
+
+        if use_base_style:
+            base_style = {0:{"title": f"Covariance of {args['l']} spectrum"}}
+        else:
+            base_style = None
+
+        ax = self.add_decoration_to_plot(
+            [ax],
+            base_style,
+            custom_style,
+            use_legend=False,
+        )
+
+        plt.show()
+
+    def annotate_real_imag_plot(self, ax, f, annotate_x=True, annotate_y=True):
+        # define new tick positions
+        labels_re = [0, 10, 20, 30]  # GHz
+        labels_re = [0, 8, 16, 24]  # GHz
+        labels_im = labels_re
+        labels = labels_re + labels_im
+
+        # define new labels for these positions
+        ticks_re = [np.flatnonzero(f == l).item() for l in labels_re]
+        ticks_im = [f.size + 1 + k for k in ticks_re]
+        ticks = ticks_re + ticks_im
+
+        # define colors for the labels to distinguish real and imag parts
+        colors_re = ["k"] * len(ticks_re)
+        colors_im = ["r"] * len(ticks_im)
+        tick_colors = colors_re + colors_im
+
+        if annotate_x:
+            # xticks (label, position, color)
+            ax.set_xticks(ticks=ticks, labels=labels)
+            for ticklabel, c in zip(ax.get_xticklabels(), tick_colors):
+                ticklabel.set_color(c)
+
+            # axis label
+            ax.set_xlabel("frequency [GHz]")
+
+            # nice brace real part
+            ax.annotate(
+                "real",
+                xy=(0.25, -0.01),
+                xytext=(0.25, -0.10),
+                fontsize=14,
+                ha="center",
+                va="bottom",
+                xycoords="axes fraction",
+                color="black",
+                # arrowprops=dict(arrowstyle="-[, widthB=6.0, lengthB=.5"),
+            )
+
+            # nice brace imag part
+            ax.annotate(
+                "imag",
+                xy=(0.75, -0.01),
+                xytext=(0.75, -0.10),
+                fontsize=14,
+                ha="center",
+                va="bottom",
+                xycoords="axes fraction",
+                color="red",
+                # arrowprops=dict(arrowstyle="-[, widthB=6.0, lengthB=.5"),
+            )
+
+        if annotate_y:
+            # yticks (label, position, color)
+            ax.set_yticks(ticks=ticks, labels=labels)
+            for ticklabel, c in zip(ax.get_yticklabels(), tick_colors):
+                ticklabel.set_color(c)
+
+            # axis label
+            ax.set_ylabel("frequency [GHz]")
+
+            # nice brace real part
+            ax.annotate(
+                "real",
+                xy=(-0.01, 0.75),
+                xytext=(-0.10, 0.75),
+                fontsize=14,
+                ha="left",
+                va="center",
+                xycoords="axes fraction",
+                rotation=90,
+                color="black",
+                # arrowprops=dict(arrowstyle="-[, widthB=6.0, lengthB=.5"),
+            )
+
+            # nice brace imag part
+            ax.annotate(
+                "imag",
+                xy=(-0.01, 0.25),
+                xytext=(-0.10, 0.25),
+                fontsize=14,
+                ha="left",
+                va="center",
+                xycoords="axes fraction",
+                rotation=90,
+                color="red",
+                # arrowprops=dict(arrowstyle="-[, widthB=6.0, lengthB=.5"),
+            )
+
+        return ax
+
+    ###
+
+    def time_domain_plot(
+        self,
+        plotdata,
+        use_base_style=True,
+        custom_style=None,
+        last_dataset_has_own_axis=False,
+    ):
+        fig, ax = plt.subplots(nrows=2, figsize=(8, 8), sharex=True, tight_layout=True)
 
         if last_dataset_has_own_axis:
             ax2 = [None, None]
@@ -622,30 +801,22 @@ class BaseMethods:
 
         for i, (data, args) in enumerate(plotdata):
             last_iteration = i == len(plotdata) - 1
-            if last_dataset_has_own_axis and last_iteration: # last data set
-                self.add_data_to_time_domain_plot(ax2, *data, **args) 
+            if last_dataset_has_own_axis and last_iteration:  # last data set
+                self.add_data_to_time_domain_plot(ax2, *data, **args)
             else:
                 self.add_data_to_time_domain_plot(ax, *data, **args)
 
-        if last_dataset_has_own_axis: 
+        if last_dataset_has_own_axis:
             ax2[0].legend(loc="upper center")
-        
+
         ax = self.add_description_time_domain_plot(
             ax, use_base_style=use_base_style, custom_style=custom_style
         )
         plt.show()
 
-    def init_time_domain_plot(self):
-        fig, ax = plt.subplots(nrows=2, figsize=(8, 8), sharex=True, tight_layout=True)
-        return fig, ax
-
-    def add_data_to_time_domain_plot(
-        self, ax, t, val, cov=None, l=None, c=None, lw=1
-    ):
+    def add_data_to_time_domain_plot(self, ax, t, val, cov=None, l=None, c=None, lw=1):
         # shift time series so zero is at the centers
-        t_span = t[-1] - t[0]
-        t_shifted = t - t_span/2
-        val_shifted, cov_shifted = shift_uncertainty(val, cov, shift=len(t)//2)
+        t_shifted, val_shifted, cov_shifted = self.shift_time_data(t, val, cov)
 
         # plotting arguments
         kwargs = {"label": l, "color": c, "linewidth": lw}
@@ -656,29 +827,74 @@ class BaseMethods:
             unc_shifted = np.sqrt(np.diag(cov_shifted))
             ax[1].semilogy(t_shifted, unc_shifted, **kwargs)
 
-    time_domain_plot_style = {
-        0: {
-            "title": "Time Domain",
-            "ylabel": "signal magnitude [-]",
-        },
-        1: {
-            "ylabel": "signal unc [-]",
-            "xlabel": "t [ns]",
-        },
-    }
-
     def add_description_time_domain_plot(
         self, ax, use_base_style=True, custom_style=None
     ):
-        # the default look
         if use_base_style:
-            ax[0].legend()
-            for i_axis, style_adjustments in self.time_domain_plot_style.items():
-                plt.setp(ax[i_axis], **style_adjustments)
+            time_domain_plot_style = {
+                0: {
+                    "title": "Time Domain",
+                    "ylabel": "signal magnitude [-]",
+                },
+                1: {
+                    "ylabel": "signal unc [-]",
+                    "xlabel": "t [ns]",
+                },
+            }
+        else:
+            time_domain_plot_style = None
 
-        # the default look
-        if isinstance(custom_style, dict):
-            for i_axis, style_adjustments in custom_style.items():
-                plt.setp(ax[i_axis], **style_adjustments)
+        ax = self.add_decoration_to_plot(ax, time_domain_plot_style, custom_style)
+
+        return ax
+
+    ###
+
+    def time_domain_covariance_plot(
+        self, plotdata, use_base_style=True, custom_style=None
+    ):
+        # note: only first element of plotdata is plotted
+
+        fig, ax = plt.subplots(nrows=1, figsize=(8, 8), tight_layout=True)
+
+        # extract relevant data
+        (data, args) = plotdata[0]
+        (t, val, cov) = data
+
+        # shift time series so zero is at the centers
+        t_shifted, val_shifted, cov_shifted = self.shift_time_data(t, val, cov)
+
+        maxi = np.max(np.abs(cov_shifted))
+        cnorm = colors.SymLogNorm(vmin=-maxi, vmax=maxi, linthresh=1e-14)
+        extend = (t_shifted.min(), t_shifted.max(), t_shifted.min(), t_shifted.max())
+
+        img0 = ax.imshow(cov_shifted, extent=extend, cmap="PuOr", norm=cnorm)
+        fig.colorbar(img0, ax=ax)
+
+        ax = self.add_description_time_domain_covariance_plot(
+            ax, use_base_style=use_base_style, custom_style=custom_style
+        )
+        plt.show()
+
+    def add_description_time_domain_covariance_plot(
+        self, ax, use_base_style=True, custom_style=None
+    ):
+        if use_base_style:
+            time_domain_covariance_plot_style = {
+                0: {
+                    "title": "Covariance of time signal",
+                    "xlabel": "t [ns]",
+                    "ylabel": "t [ns]",
+                },
+            }
+        else:
+            time_domain_covariance_plot_style = None
+
+        ax = self.add_decoration_to_plot(
+            [ax],
+            time_domain_covariance_plot_style,
+            custom_style,
+            use_legend=False,
+        )
 
         return ax

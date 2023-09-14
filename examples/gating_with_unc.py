@@ -25,16 +25,19 @@ config = {
     "window": {"val": w, "cov": uw},
     "zeropad": {"pad_len": 200, "Nx": Nx},
     "gate": {"gate_func": gate, "time": t},
-    "renormalization": None,
+    "renormalization": "unitResponse",
 }
 config_nomod = copy.deepcopy(config)
 config_nomod["window"] = None
 config_nomod["zeropad"] = None
+config_nomod["renormalization"] = None
 
 # call different time gating implementations on same data+config
 result_m1 = base.perform_time_gating_method_1(data, config, return_internal_data=True)
 result_m2 = base.perform_time_gating_method_2(data, config)
-result_nomod = base.perform_time_gating_method_1(data, config_nomod, return_internal_data=True)
+result_nomod = base.perform_time_gating_method_1(
+    data, config_nomod, return_internal_data=True
+)
 
 ####################
 

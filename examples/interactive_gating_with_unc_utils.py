@@ -9,8 +9,13 @@ from matplotlib import colors
 from PyDynamic.misc import complex_2_real_imag as c2ri
 from PyDynamic.misc import real_imag_2_complex as ri2c
 from PyDynamic.misc.tools import shift_uncertainty, trimOrPad
-from PyDynamic.uncertainty.propagate_DFT import (GUM_DFT, AmpPhase2DFT,
-                                                 DFT2AmpPhase, GUM_iDFT)
+from PyDynamic.uncertainty.propagate_DFT import (
+    GUM_DFT,
+    AmpPhase2DFT,
+    DFT2AmpPhase,
+    GUM_iDFT,
+    DFT_multiply,
+)
 from scipy import signal, special
 from scipy.linalg import block_diag
 from scipy.ndimage import convolve1d
@@ -129,8 +134,22 @@ class BaseMethods:
 
         # apply renormalization
         if config["renormalization"] is not None:
-            renorm = config["renormalization"]
-            s_gated_ri = renorm(s_gated_ri)
+            if config["renormalization"] == "unitResponse":
+                unit_response_gated = ri2c(self.get_gated_unit_response(data, config))
+                unit_response_gated /= unit_response_gated[0]  # normalize?
+                unit_response_gated_ri = c2ri(unit_response_gated)
+            elif isinstance(config["renormalization"], np.ndarray):
+                unit_response_gated_ri = config["renormalization"]
+            else:
+                raise ValueError("Renormalization of type is not supported.")
+            # renormalize
+            urg_inverted = c2ri(1.0 / ri2c(unit_response_gated_ri))
+            s_gated_ri, s_gated_ri_cov = DFT_multiply(
+                s_gated_ri,
+                urg_inverted,
+                s_gated_ri_cov,
+                None,
+            )
 
         # prepare output
         result["data"]["f"] = f
@@ -247,8 +266,15 @@ class BaseMethods:
 
         # apply renormalization
         if config["renormalization"] is not None:
-            renorm = config["renormalization"]
-            s_gated_ri = renorm(s_gated_ri)
+            if config["renormalization"] == "unitResponse":
+                unit_response_gated = ri2c(self.get_gated_unit_response(data, config))
+                unit_response_gated /= unit_response_gated[0]  # normalize?
+            elif isinstance(config["renormalization"], np.ndarray):
+                unit_response_gated = config["renormalization"]
+            else:
+                raise ValueError("Renormalization of type is not supported.")
+            # renormalize
+            s_gated = s_gated / unit_response_gated
 
         # convert back into real-imag-representation
         s_gated_ri = c2ri(s_gated)
@@ -258,6 +284,24 @@ class BaseMethods:
     ############################################################
     ### low level calls ########################################
     ############################################################
+
+    def get_gated_unit_response(self, data, config):
+        # recalculate method for unit response without unc.
+
+        f = data["f"]
+        unit_response_ri = c2ri(np.ones_like(f))
+
+        data_renorm = {"f": f, "s_ri": unit_response_ri, "s_ri_cov": None}
+
+        # remove renorm from config (otherwise leads to endless recursion)
+        config_renorm = copy.deepcopy(config)
+        config_renorm["renormalization"] = None
+
+        unit_response_gated_ri = self.perform_time_gating_method_2_core(
+            data_renorm, config_renorm
+        )
+
+        return unit_response_gated_ri
 
     def load_data(self, name="", return_mag_phase=False, return_full_cov=True):
         # check where data is (to preserve compatibility between jupyter and python call)
@@ -548,18 +592,18 @@ class BaseMethods:
     def export_to_excel(self, plotdata):
         timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d_%H.%M.%SZ")
         with pandas.ExcelWriter(f"export_{timestamp}.xlsx") as writer:
-
-            for (data, args) in plotdata:
-
+            for data, args in plotdata:
                 (t, val, cov) = data
                 label = args["l"]
                 t_shifted, val_shifted, cov_shifted = self.shift_time_data(t, val, cov)
 
-                array_export = np.c_[t_shifted, val_shifted, np.sqrt(np.diag(cov_shifted))]
+                array_export = np.c_[
+                    t_shifted, val_shifted, np.sqrt(np.diag(cov_shifted))
+                ]
                 df_export = pandas.DataFrame(array_export)
                 df_export.columns = ["time", "signal", "signal_unc"]
                 df_export.to_excel(writer, sheet_name=label)
-                
+
     ############################################################
     ### plotting stuff #########################################
     ############################################################
@@ -679,7 +723,7 @@ class BaseMethods:
         ax = self.annotate_real_imag_plot(ax, f)
 
         if use_base_style:
-            base_style = {0:{"title": f"Covariance of {args['l']} spectrum"}}
+            base_style = {0: {"title": f"Covariance of {args['l']} spectrum"}}
         else:
             base_style = None
 

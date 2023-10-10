@@ -1,10 +1,11 @@
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.8424585.svg)](https://doi.org/10.5281/zenodo.8424585)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/PTB-M4D/time-gating-examples/main?labpath=examples%2Finteractive_gating_with_unc.ipynb)
+
 # Time Gating Examples
 
 This repository holds examples for gating s-parameters in the time-domain.
 
-Click the image below to open the notebook showing the traditional time gating process:
-
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/PTB-M4D/time-gating-examples/main?labpath=examples%2Finteractive_gating_with_unc.ipynb)
+Click the "launch binder" badge above to open the notebook showing the traditional time gating process.
 
 ## Recommendations for Local Execution
 

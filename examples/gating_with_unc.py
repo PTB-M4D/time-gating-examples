@@ -1,11 +1,10 @@
 import copy
 import numpy as np
 import interactive_gating_with_unc_utils as utils
+from PyDynamic.misc import complex_2_real_imag as c2ri
+from PyDynamic.misc import real_imag_2_complex as ri2c
 
 base = utils.BaseMethods()
-
-#
-# base.compare_different_datasets()
 
 # data to be used for further processing
 data_raw = f, s11_ri, s11_ri_cov = base.load_data("empirical_cov")
@@ -19,38 +18,42 @@ t = np.linspace(0, t_span, num=Nx)
 w, uw = base.window(size=len(f), kind="neutral")
 gate = lambda t: base.gate(t, t_start=0.0, t_end=0.18, kind="kaiser", order=2.5 * np.pi)
 
+
+## RA: unit step only
+
 # store settings in dicts
-data = {"f": f, "s_ri": s11_ri, "s_ri_cov": s11_ri_cov}
-config = {
-    "window": {"val": w, "cov": uw},
-    "zeropad": {"pad_len": 200, "Nx": Nx},
+unit_response_ri = c2ri(np.ones_like(f))
+unit_response_cov_ri = np.zeros((len(unit_response_ri), len(unit_response_ri)))
+data_unitresp = {"f": f, "s_ri": unit_response_ri, "s_ri_cov": unit_response_cov_ri}
+config_unitresp = {
+    "window": None,
+    "zeropad": {"pad_len": 0, "Nx": Nx},
     "gate": {"gate_func": gate, "time": t},
-    "renormalization": "unitResponse",
+    "renormalization": None,
 }
-config_nomod = copy.deepcopy(config)
-config_nomod["window"] = None
-config_nomod["zeropad"] = None
-config_nomod["renormalization"] = None
+
+# plot settings
+args_raw = {"l": "unit step", "c": "tab:gray"}
+args_gate = {"l": "gate", "c": "tab:red"}
+args_gated = {"l": "gated unit step", "c": "tab:red"}
 
 # call different time gating implementations on same data+config
-result_m1 = base.perform_time_gating_method_1(data, config, return_internal_data=True)
-result_m2 = base.perform_time_gating_method_2(data, config)
-result_nomod = base.perform_time_gating_method_1(
-    data, config_nomod, return_internal_data=True
+result = base.perform_time_gating_method_1(
+    data_unitresp, config_unitresp, return_internal_data=True
 )
 
-####################
-
-args_raw = {"l": "raw", "c": "tab:gray"}
-args_mod = {"l": "modified", "c": "tab:green", "lw": 2}
-args_gate = {"l": "gate", "c": "red"}
-
-plotdata_timedomain = [
-    [tuple(result_nomod["internal"]["modified"].values()), args_raw],
-    [tuple(result_m1["internal"]["modified"].values()), args_mod],
-    [tuple(result_m1["internal"]["gate"].values()), args_gate],
+# plot unit response in time domain
+plotdata_td = [
+    [tuple(result["internal"]["modified"].values()), args_raw],
+    [tuple(result["internal"]["gate"].values()), args_gate],
 ]
+cs_td = {0: {"xlim": (-0.1, 0.65)}, 1: {"yscale": "linear"}}
+base.time_domain_plot(plotdata_td, custom_style=cs_td)
 
-cs_timedomain = {0: {"xlim": (-0.1, 0.65)}, 1: {"yscale": "linear"}}
-
-base.export_to_excel(plotdata_timedomain)
+# plot unit response in frequency domain
+plotdata_fd = [
+    [data_unitresp.values(), args_raw],
+    [tuple(result["data"].values()), args_gated],
+]
+cs_fd = {0: {"yscale": "log"}}
+base.mag_phase_plot(plotdata_fd, custom_style=cs_fd)

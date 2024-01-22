@@ -1,4 +1,5 @@
 import os
+import gzip
 import numpy as np
 
 from lxml import etree as ET
@@ -57,7 +58,7 @@ class SDATX_helper:
 
     def create_xml_object(self, config):
         # load data
-        freqs, uarray = self.load_data("empirical_cov")
+        freqs, uarray = self.load_data(config["dataset"])
         print("-- data loaded ---")
 
         # init xml
@@ -146,13 +147,11 @@ class SDATX_helper:
         # for every element of uarray, create corresponding entry in main_node
         data_items = data_root.find("Data").getchildren()
         for datapoint in data_items:
-
             subnode = ET.SubElement(node, "Frequency")
             rec = ET.SubElement(subnode, "ReceiverPort")
             src = ET.SubElement(rec, "SourcePort")
             for child in datapoint.getchildren():
                 src.append(child)
-
 
     def write_xml_object(self, main_node, filepath):
         s = ET.tostring(main_node, pretty_print=True, xml_declaration=True)
@@ -160,8 +159,11 @@ class SDATX_helper:
         f.write(s)
         f.close()
 
-    def write_compressed_xml_object(self, obj, filepath):
-        pass
+    def write_compressed_xml_object(self, main_node, filepath):
+        s = ET.tostring(main_node, pretty_print=False, xml_declaration=True)
+        f = gzip.open(filepath, "wb")
+        f.write(s)
+        f.close()
 
     def load_data(self, kind):
         uh = UNCLIB_helper()
@@ -180,9 +182,15 @@ if __name__ == "__main__":
     sh = SDATX_helper()
 
     config = {
+        "dataset": "empirical_cov",
         "n_ports": 1,
         "impedances": [[50.0, 0.0]],
     }
-
+    
+    # create xml
     xml = sh.create_xml_object(config)
-    sh.write_xml_object(xml, "test_ET.sdatx")
+
+    # save xml (either plain or as compressed gzip)
+    basename = config["dataset"]
+    sh.write_xml_object(xml, f"{basename}.sdatx")
+    sh.write_compressed_xml_object(xml, f"{basename}.sdatx.gz")

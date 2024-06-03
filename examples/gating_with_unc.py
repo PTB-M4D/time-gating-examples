@@ -21,7 +21,8 @@ t = np.linspace(0, t_span, num=Nx)
 # Time Gating Process Settings
 # define window and gate
 w, uw = base.window(size=len(f), kind="neutral")
-gate = lambda t: base.gate(t, t_start=0.0, t_end=0.18, kind="kaiser", kind_args={"order":2.5*np.pi})
+def gate(t):
+    return base.gate(t, t_start=0.0, t_end=0.18, kind="kaiser", kind_args={"order": 2.5 * np.pi})
 
 # store settings in dicts
 data = {"f": f, "s_ri": s11_ri, "s_ri_cov": s11_ri_cov}
@@ -73,8 +74,8 @@ base.time_domain_covariance_plot(
 )
 
 # output results to file to inspect with other tools
-if False:
-    base.export_to_excel(plotdata_timedomain)
+if True:
+    base.export_timedomain_to_excel(plotdata_timedomain)
 
 # Visualize Results of Different Methods in Frequency Domain
 args_raw = {"l": "raw", "c": "tab:gray"}

@@ -472,7 +472,7 @@ class BaseMethods:
 
         return R, cov_R
 
-    def gate(self, ts, t_start=0.0, t_end=1.0, kind="kaiser", order=0.0):
+    def gate(self, ts, t_start=0.0, t_end=1.0, kind="kaiser", kind_args=None):
         # kaiser order: 0 -> rect, +\infty -> gaussian
 
         mask = np.logical_and(ts >= t_start, ts <= t_end)
@@ -480,8 +480,38 @@ class BaseMethods:
 
         width = np.sum(mask)
         if width:
-            base_shape = signal.get_window((kind, order), width, fftbins=False)
-            gate[mask] = base_shape
+            if kind in ["custom_VNA_tools_gate"]:
+                span100 = t_end - t_start
+                
+                tdelta = span100 / 4
+                if isinstance(kind_args, dict):
+                    if "tdelta" in kind_args.keys():
+                        tdelta = kind_args["tdelta"]
+                        
+                tdelta = kind_args["tdelta"] if "tdelta" in kind_args.keys() else span100 / 4
+
+                mask1 = np.logical_and(ts >= t_start, ts <= t_start + 2*tdelta)
+                width1 = np.sum(mask1)
+                
+                mask2 = np.logical_and(ts >= t_end - 2*tdelta, ts <= t_end)
+                width2 = np.sum(mask2)
+
+                base_shape = signal.get_window("hann", width1+width2, fftbins=False)
+
+                gate[mask] = 1.0                    # center is flat 1.0
+                gate[mask1] = base_shape[:width1]   # rising hanning
+                gate[mask2] = base_shape[width1:]   # falling hanning
+
+            else:
+                if isinstance(kind_args, list):
+                    window_config = (kind, *kind_args)
+                elif isinstance(kind_args, dict):
+                    window_config = (kind, *kind_args.values())
+                else:
+                    window_config = kind
+                base_shape = signal.get_window(window_config, width, fftbins=False)
+            
+                gate[mask] = base_shape
 
         # heuristic model for gate unc, probably too complicated :-)
         gate_unc = np.zeros(

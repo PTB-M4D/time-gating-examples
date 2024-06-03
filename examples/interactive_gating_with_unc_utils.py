@@ -9,6 +9,7 @@ from matplotlib import colors
 from PyDynamic.misc import complex_2_real_imag as c2ri
 from PyDynamic.misc import real_imag_2_complex as ri2c
 from PyDynamic.misc.tools import shift_uncertainty, trimOrPad
+from PyDynamic.uncertainty.propagate_multiplication import window_application
 from PyDynamic.uncertainty.propagate_DFT import (
     GUM_DFT,
     AmpPhase2DFT,
@@ -66,7 +67,7 @@ class BaseMethods:
             if config["window"]["val"] is not None:
                 window = config["window"]["val"]
                 window_cov = config["window"]["cov"]
-                s_ri, s_ri_cov = self.apply_window(s_ri, window, s_ri_cov, window_cov)
+                s_ri, s_ri_cov = window_application(s_ri, window, s_ri_cov, window_cov)
 
         # zeropad signal is done indirectly during FFT, however pad-lengths need to be known
         if config["zeropad"] is not None:
@@ -128,7 +129,7 @@ class BaseMethods:
         # undo windowing
         if config["window"] is not None:
             if config["window"]["val"] is not None:
-                s_gated_ri, s_gated_ri_cov = self.apply_window(
+                s_gated_ri, s_gated_ri_cov = window_application(
                     s_gated_ri, 1.0 / window, s_gated_ri_cov, None
                 )
 
@@ -178,7 +179,7 @@ class BaseMethods:
             return (SAMPLES_X1, SAMPLES_X2)
 
         # evaluate
-        n_runs = 100
+        n_runs = 2000
         results = []
         for s_ri_mc, gate_array_mc in zip(
             *draw_samples(
@@ -217,7 +218,7 @@ class BaseMethods:
         if config["window"] is not None:
             if config["window"]["val"] is not None:
                 window = config["window"]["val"]
-                s_ri, _ = self.apply_window(s_ri, window)
+                s_ri, _ = window_application(s_ri, window)
 
         # zeropad signal in FD
         if config["zeropad"] is not None:
@@ -378,6 +379,23 @@ class BaseMethods:
             s_param_mag_unc, s_param_phase_unc = self.mag_phase_unc_from_cov(
                 s_param_UAP
             )
+        
+        elif name == "simulated_with_unc":
+            file_reflection = "S11_Sim_0_33_1000.s1p"
+            df = pandas.read_csv(rel_path + file_reflection, skiprows=2, sep=" ")
+
+            # load raw data
+            f = df["!freq"]
+            s_param_ri = np.r_[df["ReS11"], df["ImS11"]]
+            s_param_ri_cov = np.diag(np.full_like(s_param_ri, 0.1))
+
+            # get magnitude-phase representation for representation purposes
+            s_param_mag, s_param_phase, s_param_UAP = DFT2AmpPhase(
+                s_param_ri, s_param_ri_cov
+            )
+            s_param_mag_unc, s_param_phase_unc = self.mag_phase_unc_from_cov(
+                s_param_UAP
+            )
 
         if return_full_cov:
             if return_mag_phase:
@@ -412,50 +430,7 @@ class BaseMethods:
 
         return s_param_mag, s_param_phase, s_param_mag_unc, s_param_phase_unc
 
-    def elementwise_multiply(self, A, B, cov_A, cov_B):
-        """
-        elementwise multiplication of two real signals A and B
-        """
-
-        R = A * B
-        cov_R = cov_A @ B @ cov_A.T + cov_B @ A @ cov_B.T
-
-        return R, cov_R
-
-    def apply_window(self, A, W, cov_A=None, cov_W=None):
-        """
-        A \in R^2N uses PyDynamic real-imag representation of a complex vector \in C^N
-        A = [A_re, A_im]
-
-        W \in R^N is real-valued window
-
-        R is result in real-imag representation, element-wise application of window (separately for real and imag values)
-        R = [A_re * W, A_im * W]
-        """
-        R = A * np.r_[W, W]
-        cov_R = None
-
-        # this results from applying GUM
-        # CA = block_diag(np.diag(W), np.diag(W))
-        # cov_R = CA @ cov_A @ CA.T
-
-        # this should be the same, but is computationally faster
-        if isinstance(cov_A, np.ndarray):
-            WW = np.r_[W, W]
-            cov_R = WW * cov_A * WW[:, np.newaxis]
-
-        if isinstance(cov_W, np.ndarray):
-            # this results from applying GUM
-            # N = len(W)
-            # CW = block_diag(np.diag(A[:N]), np.diag(A[N:]))
-            # cov_R += CW @ block_diag(cov_W, cov_W) @ CW.T
-
-            # this should be the same, but is computationally faster
-            cov_R += A * block_diag(cov_W, cov_W) * A[:, np.newaxis]
-
-        return R, cov_R
-
-    def gate(self, ts, t_start=0.0, t_end=1.0, kind="kaiser", order=0.0):
+    def gate(self, ts, t_start=0.0, t_end=1.0, kind="kaiser", kind_args=None):
         # kaiser order: 0 -> rect, +\infty -> gaussian
 
         mask = np.logical_and(ts >= t_start, ts <= t_end)
@@ -463,8 +438,38 @@ class BaseMethods:
 
         width = np.sum(mask)
         if width:
-            base_shape = signal.get_window((kind, order), width, fftbins=False)
-            gate[mask] = base_shape
+            if kind in ["custom_VNA_tools_gate"]:
+                span100 = t_end - t_start
+                
+                tdelta = span100 / 4
+                if isinstance(kind_args, dict):
+                    if "tdelta" in kind_args.keys():
+                        tdelta = kind_args["tdelta"]
+                        
+                tdelta = kind_args["tdelta"] if "tdelta" in kind_args.keys() else span100 / 4
+
+                mask1 = np.logical_and(ts >= t_start, ts <= t_start + 2*tdelta)
+                width1 = np.sum(mask1)
+                
+                mask2 = np.logical_and(ts >= t_end - 2*tdelta, ts <= t_end)
+                width2 = np.sum(mask2)
+
+                base_shape = signal.get_window("hann", width1+width2, fftbins=False)
+
+                gate[mask] = 1.0                    # center is flat 1.0
+                gate[mask1] = base_shape[:width1]   # rising hanning
+                gate[mask2] = base_shape[width1:]   # falling hanning
+
+            else:
+                if isinstance(kind_args, list):
+                    window_config = (kind, *kind_args)
+                elif isinstance(kind_args, dict):
+                    window_config = (kind, *kind_args.values())
+                else:
+                    window_config = kind
+                base_shape = signal.get_window(window_config, width, fftbins=False)
+            
+                gate[mask] = base_shape
 
         # heuristic model for gate unc, probably too complicated :-)
         gate_unc = np.zeros(
@@ -491,7 +496,7 @@ class BaseMethods:
             width // 2 :
         ]
 
-        gate_times_window_ri, gate_times_window_ri_cov = self.apply_window(
+        gate_times_window_ri, gate_times_window_ri_cov = window_application(
             gate_rect_ri, window_gate, gate_rect_ri_cov, None
         )
 
@@ -589,9 +594,9 @@ class BaseMethods:
 
         return t_shifted, val_shifted, cov_shifted
 
-    def export_to_excel(self, plotdata):
+    def export_timedomain_to_excel(self, plotdata):
         timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d_%H.%M.%SZ")
-        with pandas.ExcelWriter(f"export_{timestamp}.xlsx") as writer:
+        with pandas.ExcelWriter(f"export_td_{timestamp}.xlsx") as writer:
             for data, args in plotdata:
                 (t, val, cov) = data
                 label = args["l"]
@@ -603,6 +608,24 @@ class BaseMethods:
                 df_export = pandas.DataFrame(array_export)
                 df_export.columns = ["time", "signal", "signal_unc"]
                 df_export.to_excel(writer, sheet_name=label)
+
+    def export_freqdomain_to_excel(self, plotdata):
+        timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d_%H.%M.%SZ")
+        with pandas.ExcelWriter(f"export_fd_{timestamp}.xlsx") as writer:
+            for data, args in plotdata:
+                (f, val, cov) = data
+                label = args["l"]
+
+                # convert to mag-phase-representation
+                mag, phase, mag_unc, phase_unc = self.convert_ri_cov_to_mag_phase_unc(
+                    val, cov
+                )
+
+                array_export = np.c_[f, mag, mag_unc, phase, phase_unc]
+                df_export = pandas.DataFrame(array_export)
+                df_export.columns = ["freq", "mag", "mag_unc", "phase", "phase_unc"]
+                df_export.to_excel(writer, sheet_name=label)
+
 
     ############################################################
     ### plotting stuff #########################################

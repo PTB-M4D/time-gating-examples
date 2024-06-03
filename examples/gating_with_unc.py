@@ -2,6 +2,8 @@ import copy
 import numpy as np
 
 import interactive_gating_with_unc_utils as utils
+from PyDynamic.misc import complex_2_real_imag as c2ri
+from PyDynamic.misc import real_imag_2_complex as ri2c
 
 base = utils.BaseMethods()
 
@@ -19,7 +21,8 @@ t = np.linspace(0, t_span, num=Nx)
 # Time Gating Process Settings
 # define window and gate
 w, uw = base.window(size=len(f), kind="neutral")
-gate = lambda t: base.gate(t, t_start=0.0, t_end=0.18, kind="kaiser", order=2.5*np.pi)
+def gate(t):
+    return base.gate(t, t_start=0.0, t_end=0.18, kind="kaiser", kind_args={"order": 2.5 * np.pi})
 
 # store settings in dicts
 data = {"f": f, "s_ri": s11_ri, "s_ri_cov": s11_ri_cov}
@@ -72,7 +75,7 @@ base.time_domain_covariance_plot(
 
 # output results to file to inspect with other tools
 if True:
-    base.export_to_excel(plotdata_timedomain)
+    base.export_timedomain_to_excel(plotdata_timedomain)
 
 # Visualize Results of Different Methods in Frequency Domain
 args_raw = {"l": "raw", "c": "tab:gray"}
@@ -92,3 +95,11 @@ base.mag_phase_plot(
 
 for pdata in plotdata_comparison:
     base.real_imag_covariance_plot([pdata])
+
+# compare covariance matrices
+U1 = plotdata_comparison[1][0][2]
+U2 = plotdata_comparison[2][0][2]
+data_diff_m1_m2 = [data_raw[0], np.zeros_like(data_raw[1]), U2 / U1 - 1]
+args_diff_m1_m2 = {"l": "comparison (U2 / U1 - 1)", "c": "tab:orange"}
+
+base.real_imag_covariance_plot([[data_diff_m1_m2, args_diff_m1_m2]])

@@ -178,7 +178,7 @@ class BaseMethods:
             return (SAMPLES_X1, SAMPLES_X2)
 
         # evaluate
-        n_runs = 100
+        n_runs = 2000
         results = []
         for s_ri_mc, gate_array_mc in zip(
             *draw_samples(

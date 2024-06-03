@@ -378,6 +378,23 @@ class BaseMethods:
             s_param_mag_unc, s_param_phase_unc = self.mag_phase_unc_from_cov(
                 s_param_UAP
             )
+        
+        elif name == "simulated_with_unc":
+            file_reflection = "S11_Sim_0_33_1000.s1p"
+            df = pandas.read_csv(rel_path + file_reflection, skiprows=2, sep=" ")
+
+            # load raw data
+            f = df["!freq"]
+            s_param_ri = np.r_[df["ReS11"], df["ImS11"]]
+            s_param_ri_cov = np.diag(np.full_like(s_param_ri, 0.1))
+
+            # get magnitude-phase representation for representation purposes
+            s_param_mag, s_param_phase, s_param_UAP = DFT2AmpPhase(
+                s_param_ri, s_param_ri_cov
+            )
+            s_param_mag_unc, s_param_phase_unc = self.mag_phase_unc_from_cov(
+                s_param_UAP
+            )
 
         if return_full_cov:
             if return_mag_phase:

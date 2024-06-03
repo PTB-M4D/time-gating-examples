@@ -94,3 +94,11 @@ base.mag_phase_plot(
 
 for pdata in plotdata_comparison:
     base.real_imag_covariance_plot([pdata])
+
+# compare covariance matrices
+U1 = plotdata_comparison[1][0][2]
+U2 = plotdata_comparison[2][0][2]
+data_diff_m1_m2 = [data_raw[0], np.zeros_like(data_raw[1]), U2 / U1 - 1]
+args_diff_m1_m2 = {"l": "comparison (U2 / U1 - 1)", "c": "tab:orange"}
+
+base.real_imag_covariance_plot([[data_diff_m1_m2, args_diff_m1_m2]])

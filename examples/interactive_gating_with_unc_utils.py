@@ -636,9 +636,9 @@ class BaseMethods:
 
         return t_shifted, val_shifted, cov_shifted
 
-    def export_to_excel(self, plotdata):
+    def export_timedomain_to_excel(self, plotdata):
         timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d_%H.%M.%SZ")
-        with pandas.ExcelWriter(f"export_{timestamp}.xlsx") as writer:
+        with pandas.ExcelWriter(f"export_td_{timestamp}.xlsx") as writer:
             for data, args in plotdata:
                 (t, val, cov) = data
                 label = args["l"]
@@ -650,6 +650,24 @@ class BaseMethods:
                 df_export = pandas.DataFrame(array_export)
                 df_export.columns = ["time", "signal", "signal_unc"]
                 df_export.to_excel(writer, sheet_name=label)
+
+    def export_freqdomain_to_excel(self, plotdata):
+        timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d_%H.%M.%SZ")
+        with pandas.ExcelWriter(f"export_fd_{timestamp}.xlsx") as writer:
+            for data, args in plotdata:
+                (f, val, cov) = data
+                label = args["l"]
+
+                # convert to mag-phase-representation
+                mag, phase, mag_unc, phase_unc = self.convert_ri_cov_to_mag_phase_unc(
+                    val, cov
+                )
+
+                array_export = np.c_[f, mag, mag_unc, phase, phase_unc]
+                df_export = pandas.DataFrame(array_export)
+                df_export.columns = ["freq", "mag", "mag_unc", "phase", "phase_unc"]
+                df_export.to_excel(writer, sheet_name=label)
+
 
     ############################################################
     ### plotting stuff #########################################

@@ -289,8 +289,20 @@ class BaseMethods:
     def get_gated_unit_response(self, data, config):
         # recalculate method for unit response without unc.
 
+        # calculate the timestamp of gate's maximum
+        time_max = 0.0
+        if config["gate"] is not None:
+            time = config["gate"]["time"]
+            gate_func = config["gate"]["gate_func"]
+            gate, _ = gate_func(time)
+
+            gate_max = np.max(gate)
+            time_max = np.mean(time[gate==gate_max])
+        
+        # check how a unit amplitude signal with delay time_max 
+        # is transformed by the time gating process
         f = data["f"]
-        unit_response_ri = c2ri(np.ones_like(f))
+        unit_response_ri = c2ri(np.exp(-1j*2*np.pi*f*time_max))
 
         data_renorm = {"f": f, "s_ri": unit_response_ri, "s_ri_cov": None}
 

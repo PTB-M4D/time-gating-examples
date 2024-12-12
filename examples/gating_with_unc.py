@@ -30,7 +30,7 @@ config = {
     "window": {"val": w, "cov": uw},
     "zeropad": {"pad_len": 2500, "Nx": Nx},
     "gate": {"gate_func": gate, "time": t},
-    "renormalization": None
+    "renormalization": "unitResponse",
 }
 
 # Perform the Gating Using Two Different Approaches

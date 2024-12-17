@@ -32,13 +32,13 @@ class BaseMethods:
 
     def compare_different_datasets(self, create_plot=True):
         # main empirical data (Type A, but only very few samples)
-        data_emp = self.load_data("empirical_cov", return_full_cov=False)
+        data_emp = self.load_data("empirical_cov", return_full_cov=True)
 
         # mag-phase-diag only (Type B)
-        data_raw = self.load_data("diag_only", return_full_cov=False)
+        data_raw = self.load_data("diag_only", return_full_cov=True)
 
         # simulated data (no unc)
-        data_sim = self.load_data("simulated", return_full_cov=False)
+        data_sim = self.load_data("simulated", return_full_cov=True)
 
         if create_plot:
             args_emp = {"l": "statistical cov.", "c": "tab:gray", "lw": 4}

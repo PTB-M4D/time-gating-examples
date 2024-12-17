@@ -1,4 +1,4 @@
-pydynamic >= 2.4.1
+pydynamic >= 2.5.0
 xlrd
 openpyxl
 pandas

@@ -136,9 +136,7 @@ class BaseMethods:
         # apply renormalization
         if config["renormalization"] is not None:
             if config["renormalization"] == "unitResponse":
-                unit_response_gated = ri2c(self.get_gated_unit_response(data, config))
-                unit_response_gated /= unit_response_gated[0]  # normalize?
-                unit_response_gated_ri = c2ri(unit_response_gated)
+                unit_response_gated_ri = self.get_gated_unit_response(data, config)
             elif isinstance(config["renormalization"], np.ndarray):
                 unit_response_gated_ri = config["renormalization"]
             else:
@@ -269,7 +267,6 @@ class BaseMethods:
         if config["renormalization"] is not None:
             if config["renormalization"] == "unitResponse":
                 unit_response_gated = ri2c(self.get_gated_unit_response(data, config))
-                unit_response_gated /= unit_response_gated[0]  # normalize?
             elif isinstance(config["renormalization"], np.ndarray):
                 unit_response_gated = config["renormalization"]
             else:

@@ -274,6 +274,20 @@ class BaseMethods:
             # renormalize
             s_gated = s_gated / unit_response_gated
 
+        ### DEBUG
+        # fig, ax = plt.subplots(2, 1)
+        # ax[0].plot(f, np.abs(s_gated), label="gated")
+        # ax[0].plot(f, np.abs(unit_response_gated), label="filter")
+        # ax[0].plot(f, np.abs(s_gated / unit_response_gated), label="renorm.")
+        # ax[1].plot(f, np.angle(s_gated))
+        # ax[1].plot(f, np.angle(unit_response_gated))
+        # ax[1].plot(f, np.angle(s_gated / unit_response_gated))
+        # ax[0].legend()
+        # ax[0].set_ylabel("abs")
+        # ax[1].set_ylabel("phase")
+        # ax[1].set_xlabel("freq")
+        # plt.show()
+
         # convert back into real-imag-representation
         s_gated_ri = c2ri(s_gated)
 

@@ -5,7 +5,7 @@ import interactive_gating_with_unc_utils as utils
 from PyDynamic.misc import complex_2_real_imag as c2ri
 from PyDynamic.misc import real_imag_2_complex as ri2c
 
-base = utils.BaseMethods()
+base = utils.BaseMethods(main_dataset_path="Beatty Line New Type-A Re Im Data.xlsx")  # beattydataMC200.xlsx
 
 # Compare different available datasets
 base.compare_different_datasets()

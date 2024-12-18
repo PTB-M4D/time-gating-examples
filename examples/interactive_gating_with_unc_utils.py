@@ -23,8 +23,21 @@ from scipy.ndimage import convolve1d
 
 
 class BaseMethods:
-    def __init__(self):
-        pass
+    def __init__(
+        self,
+        main_dataset_path="Beatty Line New Type-A Re Im Data.xlsx",
+        diag_dataset_path="Beatty Line s11 MagPhase data.xlsx",
+        simulated_dataset_path="S11_Sim_0_33_1000.s1p",
+    ):
+        # check where data is (to preserve compatibility between jupyter and python call)
+        if os.path.exists("data/"):
+            rel_path = "data/"
+        elif os.path.exists("../data/"):
+            rel_path = "../data/"
+
+        self.diag_dataset_path = os.path.join(rel_path, diag_dataset_path)
+        self.main_dataset_path = os.path.join(rel_path, main_dataset_path)
+        self.simulated_dataset_path = os.path.join(rel_path, simulated_dataset_path)
 
     ############################################################
     ### high level calls #######################################
@@ -308,12 +321,12 @@ class BaseMethods:
             gate, _ = gate_func(time)
 
             gate_max = np.max(gate)
-            time_max = np.mean(time[gate==gate_max])
-        
-        # check how a unit amplitude signal with delay time_max 
+            time_max = np.mean(time[gate == gate_max])
+
+        # check how a unit amplitude signal with delay time_max
         # is transformed by the time gating process
         f = data["f"]
-        unit_response_ri = c2ri(np.exp(-1j*2*np.pi*f*time_max))
+        unit_response_ri = c2ri(np.exp(-1j * 2 * np.pi * f * time_max))
 
         data_renorm = {"f": f, "s_ri": unit_response_ri, "s_ri_cov": None}
 
@@ -329,15 +342,10 @@ class BaseMethods:
 
     def load_data(self, name="", return_mag_phase=False, return_full_cov=True):
         # check where data is (to preserve compatibility between jupyter and python call)
-        if os.path.exists("data/"):
-            rel_path = "data/"
-        elif os.path.exists("../data/"):
-            rel_path = "../data/"
 
         if name == "diag_only":
             # load reflection data
-            file_reflection = "Beatty Line s11 MagPhase data.xlsx"
-            df = pandas.read_excel(rel_path + file_reflection, skiprows=2)
+            df = pandas.read_excel(self.diag_dataset_path, skiprows=2)
 
             # add missing 0Hz-frequency point and construct complex variables
             # phase for a 0Hz is assumed to be zero
@@ -354,10 +362,7 @@ class BaseMethods:
             )
 
         elif name == "empirical_cov":
-            file_reflection = "Beatty Line New Type-A Re Im Data.xlsx"
-            dfs = pandas.read_excel(
-                rel_path + file_reflection, skiprows=1, sheet_name=None
-            )
+            dfs = pandas.read_excel(self.main_dataset_path, skiprows=1, sheet_name=None)
             df0 = dfs[list(dfs.keys())[0]]
 
             f = np.r_[0, df0.iloc[:, 0]]  # GHz
@@ -387,8 +392,7 @@ class BaseMethods:
             )
 
         elif name == "simulated":
-            file_reflection = "S11_Sim_0_33_1000.s1p"
-            df = pandas.read_csv(rel_path + file_reflection, skiprows=2, sep=" ")
+            df = pandas.read_csv(self.simulated_dataset_path, skiprows=2, sep=" ")
 
             # load raw data
             f = df["!freq"]
@@ -402,10 +406,9 @@ class BaseMethods:
             s_param_mag_unc, s_param_phase_unc = self.mag_phase_unc_from_cov(
                 s_param_UAP
             )
-        
+
         elif name == "simulated_with_unc":
-            file_reflection = "S11_Sim_0_33_1000.s1p"
-            df = pandas.read_csv(rel_path + file_reflection, skiprows=2, sep=" ")
+            df = pandas.read_csv(self.simulated_dataset_path, skiprows=2, sep=" ")
 
             # load raw data
             f = df["!freq"]
@@ -463,25 +466,27 @@ class BaseMethods:
         if width:
             if kind in ["custom_VNA_tools_gate"]:
                 span100 = t_end - t_start
-                
+
                 tdelta = span100 / 4
                 if isinstance(kind_args, dict):
                     if "tdelta" in kind_args.keys():
                         tdelta = kind_args["tdelta"]
-                        
-                tdelta = kind_args["tdelta"] if "tdelta" in kind_args.keys() else span100 / 4
 
-                mask1 = np.logical_and(ts >= t_start, ts <= t_start + 2*tdelta)
+                tdelta = (
+                    kind_args["tdelta"] if "tdelta" in kind_args.keys() else span100 / 4
+                )
+
+                mask1 = np.logical_and(ts >= t_start, ts <= t_start + 2 * tdelta)
                 width1 = np.sum(mask1)
-                
-                mask2 = np.logical_and(ts >= t_end - 2*tdelta, ts <= t_end)
+
+                mask2 = np.logical_and(ts >= t_end - 2 * tdelta, ts <= t_end)
                 width2 = np.sum(mask2)
 
-                base_shape = signal.get_window("hann", width1+width2, fftbins=False)
+                base_shape = signal.get_window("hann", width1 + width2, fftbins=False)
 
-                gate[mask] = 1.0                    # center is flat 1.0
-                gate[mask1] = base_shape[:width1]   # rising hanning
-                gate[mask2] = base_shape[width1:]   # falling hanning
+                gate[mask] = 1.0  # center is flat 1.0
+                gate[mask1] = base_shape[:width1]  # rising hanning
+                gate[mask2] = base_shape[width1:]  # falling hanning
 
             else:
                 if isinstance(kind_args, list):
@@ -491,7 +496,7 @@ class BaseMethods:
                 else:
                     window_config = kind
                 base_shape = signal.get_window(window_config, width, fftbins=False)
-            
+
                 gate[mask] = base_shape
 
         # heuristic model for gate unc, probably too complicated :-)
@@ -648,7 +653,6 @@ class BaseMethods:
                 df_export = pandas.DataFrame(array_export)
                 df_export.columns = ["freq", "mag", "mag_unc", "phase", "phase_unc"]
                 df_export.to_excel(writer, sheet_name=label)
-
 
     ############################################################
     ### plotting stuff #########################################

@@ -20,7 +20,7 @@ from PyDynamic.uncertainty.propagate_DFT import (
 from scipy import signal, special
 from scipy.linalg import block_diag
 from scipy.ndimage import convolve1d
-
+from scipy.io import loadmat
 
 class BaseMethods:
     def __init__(
@@ -28,6 +28,10 @@ class BaseMethods:
         main_dataset_path="Beatty Line New Type-A Re Im Data.xlsx",
         diag_dataset_path="Beatty Line s11 MagPhase data.xlsx",
         simulated_dataset_path="S11_Sim_0_33_1000.s1p",
+        aggregated_dataset_paths=[
+            "S11_mean_and_covariance/S11_corr_mean.mat",
+            "S11_mean_and_covariance/S11_corr_full_cov.mat",
+        ],
     ):
         # check where data is (to preserve compatibility between jupyter and python call)
         if os.path.exists("data/"):
@@ -38,6 +42,7 @@ class BaseMethods:
         self.diag_dataset_path = os.path.join(rel_path, diag_dataset_path)
         self.main_dataset_path = os.path.join(rel_path, main_dataset_path)
         self.simulated_dataset_path = os.path.join(rel_path, simulated_dataset_path)
+        self.aggregated_dataset_paths = [os.path.join(rel_path, p) for p in aggregated_dataset_paths]
 
     ############################################################
     ### high level calls #######################################
@@ -414,6 +419,26 @@ class BaseMethods:
             f = df["!freq"]
             s_param_ri = np.r_[df["ReS11"], df["ImS11"]]
             s_param_ri_cov = np.diag(np.full_like(s_param_ri, 0.1))
+
+            # get magnitude-phase representation for representation purposes
+            s_param_mag, s_param_phase, s_param_UAP = DFT2AmpPhase(
+                s_param_ri, s_param_ri_cov
+            )
+            s_param_mag_unc, s_param_phase_unc = self.mag_phase_unc_from_cov(
+                s_param_UAP
+            )
+        
+        elif name == "aggregated_data_matlab":
+
+            df_mean = loadmat(self.aggregated_dataset_paths[0])
+            df_cov = loadmat(self.aggregated_dataset_paths[1])
+
+            s_param_complex = np.array( df_mean["S11_corr_mean"]).squeeze()
+
+            # load raw data
+            f = 0.05 * np.arange(s_param_complex.size)   # TODO!!! 
+            s_param_ri = np.r_[np.real(s_param_complex), np.imag(s_param_complex)]
+            s_param_ri_cov = np.array(df_cov["S11_full_cov"])
 
             # get magnitude-phase representation for representation purposes
             s_param_mag, s_param_phase, s_param_UAP = DFT2AmpPhase(

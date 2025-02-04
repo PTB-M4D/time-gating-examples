@@ -29,6 +29,7 @@ class BaseMethods:
         diag_dataset_path="Beatty Line s11 MagPhase data.xlsx",
         simulated_dataset_path="S11_Sim_0_33_1000.s1p",
         aggregated_dataset_paths=[
+            "S11_mean_and_covariance/S11_corr_freqs.mat",
             "S11_mean_and_covariance/S11_corr_mean.mat",
             "S11_mean_and_covariance/S11_corr_full_cov.mat",
         ],
@@ -430,13 +431,14 @@ class BaseMethods:
         
         elif name == "aggregated_data_matlab":
 
-            df_mean = loadmat(self.aggregated_dataset_paths[0])
-            df_cov = loadmat(self.aggregated_dataset_paths[1])
+            df_freq = loadmat(self.aggregated_dataset_paths[0])
+            df_mean = loadmat(self.aggregated_dataset_paths[1])
+            df_cov = loadmat(self.aggregated_dataset_paths[2])
 
             s_param_complex = np.array( df_mean["S11_corr_mean"]).squeeze()
 
             # load raw data
-            f = 0.05 * np.arange(s_param_complex.size)   # TODO!!! 
+            f = np.array(df_freq["Freqs"]).squeeze()
             s_param_ri = np.r_[np.real(s_param_complex), np.imag(s_param_complex)]
             s_param_ri_cov = np.array(df_cov["S11_full_cov"])
 
